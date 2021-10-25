@@ -1,0 +1,343 @@
+---
+title: "Spatial project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+rm(list = ls())
+walker = read.table("walker_sample.txt",header = T)
+pacman::p_load(skimr, sf, sp, geoR,  gstat, stars, automap, intamap,  tidyverse, spatstat, lmtest, lattice,tmap, tmaptools, spData, rgdal,rgeos,gbm, raster, maptools, GGally,e1071,randomForest,caret)
+set.seed(2021)
+```
+
+```{r}
+#### EDA & ESDA ####
+#### Summary statistics ####
+
+walker <- walker[-which(walker$y >400),]
+walker <- walker[-which(walker$v >3700),]
+walker.df<- walker
+
+#V Variable #
+skim(as.data.frame(walker$v))
+
+#Q-Q Normal plot
+qqnorm(walker$v,xlab="v", ylab="Cumulative frequencies")
+qqline(walker$v)
+
+#Corr plot
+ggpairs(walker.df[,1:4])
+
+# H-scatterplots
+hscat(v~1, walker, c(0,5,10,15,20,25,30))
+```
+
+```{r}
+#SETTING UP GRID
+x.grid <- seq(from = 8, to = 251, by = 2.5)
+y.grid <- seq(from = 8, to = 291, by = 2.5)
+walker.grid <- expand.grid(x = x.grid , y = y.grid)
+
+walker.grid.sp = SpatialPixelsDataFrame(points = walker.grid[c("x", "y")], 
+                                        data = walker.grid, 
+                                        proj4string = CRS("+init=epsg:28992"))
+coordinates(walker) = c("x","y")
+proj4string(walker) = CRS("+init=epsg:28992")
+
+###MAP PLOTS####
+tm_shape(walker) +
+tm_dots(col="v", style = "jenks",  size=0.2, legend.hist = TRUE, palette = "Reds") +
+tm_layout(title = "V values",aes.palette = "Reds") + 
+tm_legend(legend.position=c("right","bottom"), outside = TRUE, hist.width = 2)
+```
+
+
+```{r}
+#### Trend Surface Analysis ####
+walker.grid.sp$tr1 = krige(v ~ 1, walker, walker.grid.sp, degree = 1)$var1.pred
+walker.grid.sp$tr2 = krige(v ~ 1, walker, walker.grid.sp, degree = 2)$var1.pred
+walker.grid.sp$tr3 = krige(v ~ 1, walker, walker.grid.sp, degree = 3)$var1.pred
+
+spplot(walker.grid.sp, c("tr1", "tr2", "tr3"))
+```
+
+```{r}
+#### Theissen polygons ####
+
+#Create a tessellated surface
+walker.the = as(dirichlet(as.ppp(walker)), "SpatialPolygons")
+walker.the = as(walker.the,"SpatialPolygons")
+
+# Sets the projection
+proj4string(walker.the) <- proj4string(walker)
+proj4string(walker.the) <- CRS("+init=epsg:28992")
+
+# Assign to each polygon the data
+int = over(walker.the,walker,mean)
+
+# Create a SpatialPolygonsDataFrame
+thiess <- SpatialPolygonsDataFrame (walker.the, int)
+qtm(thiess)
+
+# crops the polygon by our output area shapefile
+thiessen.crop = crop(thiess, walker)
+
+# map v values across thiessen polygons
+tm_shape (thiessen.crop) + 
+  tm_fill(col = "v", style = "quantile", palette = "Reds",
+          title = "V values") +
+  tm_borders(alpha=.3, col = "black") +
+  tm_shape(walker) + 
+  tm_dots(col = "black", scale = 0.5) +
+  tm_layout(legend.position = c ("right", "top"), 
+  legend.outside = T,main.title = "Theissen polygons")
+```
+
+```{r}
+#####Inverse Distance Weighting####
+
+# Interpolate the grid cells using a power value of 2 (idp=2.0)
+idw_1.0 = gstat::idw(v ~ 1, walker, newdata=walker.grid.sp, idp=1)
+idw_2.0 = gstat::idw(v ~ 1, walker, newdata=walker.grid.sp, idp=2)
+idw_3.0 = gstat::idw(v ~ 1, walker, newdata=walker.grid.sp, idp=3)
+
+walker.grid.sp$k1 = gstat::idw(v ~ 1, walker, newdata=walker.grid.sp, idp=1)$var1.pred
+walker.grid.sp$k2 = gstat::idw(v ~ 1, walker, newdata=walker.grid.sp, idp=2)$var1.pred
+walker.grid.sp$k3 = gstat::idw(v ~ 1, walker, newdata=walker.grid.sp, idp=3)$var1.pred
+
+spplot(walker.grid.sp, c("k1", "k2", "k3"))
+```
+
+```{r}
+#### Regression Modeling ####
+index = sample(1:nrow(walker.df),size = 0.8*nrow(walker.df),
+               replace = F) #split the data into train and test sets
+
+reg = lm(formula = v~x+y,data = walker.df,subset = index) #Regression model
+anova(reg)
+summary(reg)
+
+#Residual Analysis
+par(mfrow = c(2, 2))
+plot(reg)
+
+shapiro.test(residuals(reg)) ## Testing normality of residuals
+bptest(reg)
+
+#Predicting on test-set
+reg.pred = predict(object = reg,walker.df[-index,]) #Predict test values
+sqrt(mean((reg.pred - walker.df[-index,]$v)^2)) #RMSE = 480.4217
+
+#Make predictions on unsampled locations.
+grid.data.frame = as.data.frame(walker.grid.sp@coords)
+reg.grid.predict = predict(object = reg, grid.data.frame)
+unsampled.predict = as.data.frame(matrix(data = c(walker.grid@coords,reg.grid.predict),
+                                         ncol = 3))
+colnames(unsampled.predict) = c("x","y","v")
+coordinates(unsampled.predict) = c("x","y")
+proj4string(unsampled.predict) = CRS("+init=epsg:28992")
+spplot(obj = unsampled.predict["v"])
+```
+
+
+```{r}
+#### variograms ####
+
+#Omnidirectional variogram
+v.vgm = variogram(v~1, walker)
+plot(variogram(v~1, walker, cloud=TRUE)) #variogram cloud
+plot(v.vgm)
+
+#Directional Variogram
+v.dir = variogram(v~1, walker, alpha = c(0,45,90,135))
+lzndir.fit = vgm(.59, "Sph", 1200, .05, anis = c(45, .4))
+plot(v.dir, lzndir.fit, as.table = TRUE)
+
+#Variogram maps
+vgm.map = variogram(v~1, walker, cutoff = 1500, width = 100, 
+                    map = TRUE)
+print(plot(vgm.map, threshold = 5))
+```
+
+```{r}
+#### Variogam models ####
+
+plot(v.vgm) #Empitical/Experimental variogram
+
+variogram_z.t <- fit.variogram(v.vgm, model = vgm("Exp", "Sph", "Gau")) #Choosing the best fit again
+variogram_z.t
+m <- vgm(90610, "Exp", 11.7)
+
+# Spherical variogram model
+v.fit1 = fit.variogram(v.vgm, model = vgm(100000,"Sph", 40000,1))
+plot(v.fit1,cutoff = 110000, type = "l")
+mod1 = vgm(100000,"Sph", 40000)
+
+mod1.cv = krige.cv(v~1, walker, model = mod1, nfold = 10)
+sqrt(mean(mod1.cv$residual^2)) #RMSE = 181.4919
+
+# Exponential Variogram model
+v.fit2 = fit.variogram(v.vgm, model = vgm(100000, "Exp", 40000, 1))
+plot(v.fit2,cutoff = 110000, type = "l")
+mod2 = vgm(100000, "Exp", 40000, 1)
+
+mod2.cv = krige.cv(v~1, walker, model = mod2, nfold = 10)
+sqrt(mean(mod2.cv$residual^2)) #RMSE = 181.278
+
+#Linear variogram model
+v.fit3 = fit.variogram(v.vgm, model = vgm(100000, "Lin", 40000, 1))
+plot(v.fit3,cutoff = 110000, type = "l")
+mod3 = vgm(100000, "Lin", 40000, 1)
+
+mod3.cv = krige.cv(v~1, walker, model = mod3, nfold = 10)
+sqrt(mean(mod3.cv$residual^2)) #RMSE = 181.278
+
+#Cir variogram model
+v.fit4 = fit.variogram(v.vgm, model = vgm(100000, "Cir", 40000, 1))
+plot(v.fit4,cutoff = 110000, type = "l")
+mod4 = vgm(100000, "Cir", 40000, 1)
+
+mod4.cv = krige.cv(v~1, walker, model = mod4, nfold = 10)
+sqrt(mean(mod4.cv$residual^2)) #RMSE =181.3102
+```
+
+```{r}
+#### KRIGING ####
+
+#Ordinary kriging 
+ord = krige(v ~ 1, walker,walker.grid.sp, model = m)
+ord.cv = krige.cv(v~1, walker, walker.grid.sp, model = m, nfold=10)
+sqrt(mean(ord.cv$residual^2)) #RMSE =  175.1213
+
+spplot(obj = ord["var1.pred"])
+spplot(obj = ord["var1.var"])
+
+#Simple Kriging
+sim <- krige(v ~ 1, walker,walker.grid.sp, mod2, beta = 5.9)
+sim.cv <- krige.cv(v ~ 1, walker,walker.grid.sp,  model =mod2, beta = 5.9,nfold=10)
+sqrt(mean(sim.cv$residual^2)) #RMSE = 175.7135
+
+spplot(sim["var1.pred"])
+spplot(sim["var1.var"])
+
+#Universal kriging
+uni.krig = krige(v ~ x+y, walker, walker.grid.sp, model = m)
+uni.krig.cv = krige.cv(v~x+y, walker, walker.grid.sp, model = m,nfold=10)
+sqrt(mean(uni.krig.cv$residual^2)) #RMSE = 178.8352
+
+spplot(obj = uni.krig["var1.pred"])
+spplot(obj = uni.krig["var1.var"])
+
+
+# Indicator Kriging
+# Lower quartile = 184.3   
+# Median = 422.3
+# Upper quartile = 639.1
+
+ind.lq = krige(I(v>184.3)~1, walker, walker.grid.sp, m)
+ind.mid = krige(I(v>422.3)~1, walker, walker.grid.sp, m)
+ind.uq = krige(I(v>639.1)~1, walker, walker.grid.sp, m)
+
+spplot(ind.lq["var1.pred"])
+spplot(ind.mid["var1.pred"])
+spplot(ind.uq["var1.pred"])
+
+spplot(ind.lq["var1.var"])
+spplot(ind.mid["var1.var"])
+spplot(ind.uq["var1.var"])
+      
+
+# Block Kriging
+block1 = krige(v~1, walker, walker.grid.sp, block = c(1,1),
+                    model = v.fit2)
+spplot(block1["var1.pred"])
+spplot(block1["var1.var"])
+sqrt(mean((walker@data$v - block1@data$var1.pred)^2)) #RMSE 402.2251
+
+block2 = krige(v~1, walker, walker.grid.sp, block = c(25,25),
+                      model = v.fit2)
+spplot(block2["var1.pred"])
+spplot(block2["var1.var"])
+sqrt(mean((walker@data$v - block2@data$var1.pred)^2)) #RMSE 383.2888
+
+block3 = krige(v~1, walker, walker.grid.sp, block = c(50,50),
+                      model = v.fit2)
+spplot(block3["var1.pred"])
+spplot(block3["var1.var"])
+sqrt(mean((walker@data$v - block3@data$var1.pred)^2)) #RMSE 363.4327
+
+block4 = krige(v~1, walker, walker.grid.sp, block = c(75,75),
+                      model = v.fit2)
+spplot(block4["var1.pred"])
+spplot(block4["var1.var"])
+sqrt(mean((walker@data$v - block4@data$var1.pred)^2)) #RMSE 354.7867
+
+block5 = krige(v~1, walker, walker.grid.sp, block = c(100,100),
+                    model = v.fit2)
+spplot(block5["var1.pred"])
+spplot(block5["var1.var"])
+sqrt(mean((walker@data$v - block5@data$var1.pred)^2)) #RMSE 353.3103
+```
+
+```{r}
+##### Machine Learning Approach ####
+
+ML = read.table("walker_sample.txt",header = T)
+
+#Split the data into training and testing
+index = sample(1:nrow(ML),size = 0.8*nrow(ML),replace = F)
+
+train = ML[index,]
+test  = ML[-index,]
+
+#Random forest 
+rf = randomForest(v ~ x+y,
+                       data = train,
+                       ntree = 10000,
+                       importance = TRUE,
+                       na.action = na.exclude,
+                       do.trace = 1000,
+                       cv.fold = 10)
+
+pred.rf = predict(object = rf,test)
+sqrt(mean((test$v - pred.rf)^2)) #RMSE 196.4251
+
+#GBM
+gbm =       gbm(v ~ x+y, data = train, 
+                   distribution = 'gaussian', 
+                   n.trees = 5000, #B
+                   interaction.depth = 2, #d
+                   shrinkage = 0.01, #lambda
+                   bag.fraction = 1,  
+                   cv.folds = 10, #built-in CV
+                   verbose = F)
+
+gbm.pred = predict(object = gbm, test)
+sqrt(mean((test$v - gbm.pred)^2)) #RMSE 263.4571
+
+#Randomforest out performs gbm.
+
+grid.pred = predict(object = rf, walker.grid.sp@coords)
+rf.pred = as.data.frame(matrix(data = c(walker.grid.sp@coords,grid.pred),
+                                      ncol = 3))
+colnames(rf.pred) = c("x","y","v")
+
+coordinates(rf.pred) = c("x","y")
+proj4string(rf.pred) = CRS("+init=epsg:28992")
+spplot(obj = rf.pred["v"])
+
+```
+
+```{r}
+#### Conditional Simulations ####
+condsim = krige(v~1, walker, walker.grid.sp, model = v.fit2,
+                  nmax=30, nsim = 4)
+print(spplot(condsim))
+beep()
+```
+
