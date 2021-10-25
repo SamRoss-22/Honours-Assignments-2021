@@ -1,0 +1,367 @@
+---
+title: "CA1"
+output: html_document
+---
+
+```{r}
+rm(list=ls())
+set.seed(2021)
+library(tree)
+library(randomForest)
+library(spdep)
+```
+
+Question 1
+
+a)
+```{r}
+Q1dat$pests <- as.factor(Q1dat$pests)
+Q1dat$quality <- as.factor(Q1dat$quality)
+
+ind <- sample(1:nrow(Q1dat), 0.8*nrow(Q1dat))
+train <- Q1dat[ind,]
+test <- Q1dat[-ind,]
+
+tree_q1 <- tree(quality ~ ., data = train)
+summary(tree_q1)
+
+plot(tree_q1)
+text(tree_q1, cex=0.8)
+```
+
+b)
+```{r}
+# minsize: will only consider split if at least so many observations in node
+# mincut: will only split if both child nodes then have at least so many
+# mindev: will only consider split if RSS is at least this times root RSS
+
+stopcrit <- tree.control(nobs=nrow(train), mincut = 0, minsize = 2, mindev = 0.0005)
+homo_tree <- tree(quality ~ ., data = train, control = stopcrit)
+summary(homo_tree) 
+homo_tree
+
+plot(homo_tree)
+text(homo_tree, cex=0.8)
+```
+
+c)
+```{r}
+mealie.cv <- cv.tree(homo_tree,FUN = prune.misclass)
+plot(mealie.cv$size, mealie.cv$dev, type = 'o', pch = 16,
+     xlab = 'Number of terminal nodes', ylab = 'CV error')
+minT <- which.min(mealie.cv$size)
+abline(v = minT, lty = 2, lwd = 2, col = 'red')
+legend("topright", legend = "Min CV error",col='red',lwd = 2,lty ='dashed')
+
+#Prune the tree
+pr_tree <- prune.misclass(homo_tree, best = minT)
+plot(pr_tree)
+text(pr_tree, pretty = 0)
+summary(pr_tree) 
+```
+
+d)
+```{r}
+#Orginal tree
+yhat <- predict(tree_q1, test, type = 'class') #Type argument nb for classification!
+(c_mat <- table(yhat, test$quality))          #Confustion Matrix
+sum(diag(c_mat))/nrow(test)*100                #Classification accuracy %
+1 - sum(diag(c_mat))/nrow(test)                #Misclassification rate
+
+#Homogeneous tree
+yhat <- predict(homo_tree, test, type = 'class') #Type argument nb for classification!
+(c_mat <- table(yhat, test$quality))          #Confustion Matrix
+sum(diag(c_mat))/nrow(test)*100                #Classification accuracy %
+1 - sum(diag(c_mat))/nrow(test)                #Misclassification rate
+
+#Pruned tree
+yhat <- predict(pr_tree, test, type = 'class') #Type argument nb for classification!
+(c_mat <- table(yhat, test$quality))          #Confustion Matrix
+sum(diag(c_mat))/nrow(test)*100                #Classification accuracy %
+1 - sum(diag(c_mat))/nrow(test)                #Misclassification rate
+```
+
+e)
+```{r}
+coords_a <- Q1dat[Q1dat$quality=="A",]
+coords_a <- coords_a[,c(1,2)]
+
+coords_b <- Q1dat[Q1dat$quality=="B",]
+coords_b <- coords_b[,c(1,2)]
+
+coords_c <- Q1dat[Q1dat$quality=="C",]
+coords_c <- coords_c[,c(1,2)]
+
+coords_d <- Q1dat[Q1dat$quality=="D",]
+coords_d <- coords_d[,c(1,2)]
+
+plot(Q1dat$longitude, Q1dat$latitude, ylab="Latitude", xlab="Longitude")
+points(coords_a, col = "pink")
+points(coords_b, col = "green")
+points(coords_c, col = "red")
+points(coords_d, col = "blue")
+abline(v = 26.4)
+
+#create a slope feature
+set.seed(2021)
+newfeat<-Rotation(Q1dat2[,c(1,2)],pi/4)
+Q1dat3<- data.frame(Q1dat,newfeat)
+
+ind <- sample(1:nrow(Q1dat2), 0.8*nrow(Q1dat2))
+train <- Q1dat2[ind,]
+test <- Q1dat2[-ind,]
+
+stopcrit <- tree.control(nobs=nrow(train), mincut = 0, minsize = 2, mindev = 0.0005)
+area_tree <- tree(quality ~ ., data = train, control = stopcrit)
+summary(area_tree)
+area_tree
+
+#D
+yhat <- predict(area_tree, test, type = 'class') #Type argument nb for classification!
+(c_mat <- table(yhat, test$quality))             #Confustion Matrix
+sum(diag(c_mat))/nrow(test)*100                  #Classification accuracy %
+1 - sum(diag(c_mat))/nrow(test)                  #Misclassification rate
+
+coords_a <- Q1dat3[Q1dat3$quality=="A",]
+coords_a <- coords_a[,c(7,8)]
+
+coords_b <- Q1dat3[Q1dat3$quality=="B",]
+coords_b <- coords_b[,c(7,8)]
+
+coords_c <- Q1dat3[Q1dat3$quality=="C",]
+coords_c <- coords_c[,c(7,8)]
+
+coords_d <- Q1dat3[Q1dat3$quality=="D",]
+coords_d <- coords_d[,c(7,8)]
+
+plot(Q1dat3$X1, Q1dat3$X2, ylab="Latitude", xlab="Longitude")
+points(coords_a, col = "pink")
+points(coords_b, col = "green")
+points(coords_c, col = "red")
+points(coords_d, col = "blue")
+abline(v = 26.4)
+```
+
+
+
+
+Question 2
+
+a)
+```{r}
+attach(Q2dat)
+library(randomForest)
+Q2dat$sex<-as.factor(Q2dat$sex)
+sample.split <- sample(1:nrow(Q2dat),size = 0.8*nrow(Q2dat))
+train <- Q2dat[sample.split,]
+test <- Q2dat[-sample.split,]
+  
+#Bagging model
+#Start with a 1000 trees
+bag_tree <- randomForest(formula= total_UPDRS~.,data = train,
+                          mtry = ncol(Q2dat)-1,
+                          ntree = 1000, 
+                          importance = TRUE, 
+                          do.trace = 250)
+
+#Number of trees to be used
+plot(bag_tree$mse,type = "s",xlab = "Number of trees",ylab = "MSE",main = "OOB eeror against number of trees")
+which.min(bag_tree$mse) #936
+
+#We use a grid search to find optimal mtry 
+library(caret)
+q2.grid <- expand.grid(mtry = 2:17,
+                             splitrule= "variance",
+                             min.node.size = c(1,20))
+control.q2 <- trainControl(method = "oob",verboseIter = T)
+
+set.seed(2021)
+q2.mtry <- train(total_UPDRS ~.,
+                       data=train,
+                       method = "ranger",
+                       num.trees=1000,
+                       verbose=T,
+                       trControl = control.q2,
+                       tuneGrid = q2.grid)
+
+q2.mtry$finalModel #This model is the best
+#Suitable hyper parameters: mtry = 17, splitrule = variance, min.node.size = 1
+
+
+#Random Forest model
+rf_tree <- randomForest(formula = total_UPDRS~.,data = train,
+                               ntree=1000,
+                               importance = T,
+                               do.trace = 250,
+                               min.node.size=1)
+
+
+## Let's also grow a single tree for reference
+set.seed(2021)
+single_tree <- randomForest(total_UPDRS ~ ., data = train, 
+                           mtry = ncol(Q2dat) - 1,
+                           ntree = 1, 
+                           importance = T, 
+                           na.action = na.exclude, 
+                           keep.forest = T, 
+                           replace = F)
+
+single_tree$forest$nrnodes  #1637
+
+#Model performance
+mean(rf_tree$mse) ; mean(bag_tree$mse)
+## Compare OOB Errors
+par(mfrow = c(1,1))
+plot(bag_tree$mse, type = 'l', xlab = 'Number of trees', ylab = 'OOB MSE', 
+     col = 'blue', lwd = 2, ylim = c(0, max(rf_tree$mse)))
+lines(rf_tree$mse, col = 'orange', lwd = 2)
+abline(h = single_tree$mse, lty = 2, col = 'purple', lwd = 2)
+legend('topright', legend = c('Bagging', 'Random Forest', 'Lonely Tree'), 
+       col = c('blue', 'orange', 'purple'), lwd = 2, lty = c('solid', 'solid', 'dashed'))
+
+## Predictions
+rf_pred <- predict(rf_tree, newdata = Q2dat[-train, ])
+tree_pred <- predict(single_tree, newdata = Q2dat[-train, ])
+
+
+## Prediction accuracy
+ytest <- Q2dat[-train, 1]
+bag_mse <- mean((ytest - bag_pred)^2)
+rf_mse <- mean((ytest - rf_pred)^2)
+tree_mse <- mean((ytest - tree_pred)^2)
+
+## Plot Accuracy
+plot(bag_tree$mse, type = 'l', xlab = 'Number of trees', ylab = 'MSE', 
+     col = 'blue', lwd = 2, ylim = c(0, max(rf_tree$mse)))
+lines(rf_tree$mse, col = 'darkgreen', lwd = 2)
+abline(h = single_tree$mse, col = 'darkgrey', lwd = 2)
+abline(h = bag_mse, col = 'blue', lty = 2, lwd = 2)
+abline(h = rf_mse, col = 'darkgreen', lty = 2, lwd = 2)
+abline(h = tree_mse, col = 'darkgrey', lty = 2, lwd = 2)
+legend('bottom', legend = c('Bagging OOB', 'Random Forest OOB', 'Lonely Tree OOB', "Testing MSE's"), 
+       col=c('blue', 'darkgreen', 'darkgrey', 'black'), lwd = 2, lty = c('solid', 'solid', 'solid', 'dashed'))
+```
+
+b)
+```{r}
+library(gbm)
+set.seed(2021)
+library(caret)
+
+control <- trainControl(method="cv",number = 10,verboseIter = T)
+grid.search <- expand.grid(n.trees = c(1000, 5000, 15000, 25000, 30000),
+                           interaction.depth = c(1,2,3,4),
+                           shrinkage = 0.01,
+                           n.minobsinnode = 1)
+
+set.seed(2021)
+gbm.gridsearch <- train(total_UPDRS ~.,data=train,
+                              method="gbm",
+                              distribution="gaussian",
+                              trControl = control,
+                              verbose=F,
+                              tuneGrid=grid.search)
+gbm.gridsearch$bestTune
+#n.trees interaction.depth shrinkage n.minobsinnode
+#12   25000	4	0.01	1
+#Final gbm() model..
+set.seed(2021)
+gbm.tune <- gbm(total_UPDRS ~.,data = train,
+                      distribution = "gaussian",
+                      n.trees = 25000,
+                      shrinkage = 0.01,
+                      interaction.depth = 4,
+                      n.minobsinnode = 1,
+                      cv.folds = 10,
+                      verbose = F)
+
+gbm.perf(gbm.tune,method = "cv") 
+mean(gbm.tune$train.error)
+min<-which.min(gbm.tune$cv.error)
+yhat_gbm <- predict.gbm(gbm.tune, test)
+(mse_gbm <- mean((test$total_UPDRS - yhat_gbm)^2))
+
+## Compare OOB Errors
+par(mfrow = c(1,1))
+plot(gbm.tune$train.error, type = 'l', xlab = 'Number of trees', ylab = 'Sqaured error loss', 
+     col = 'green', lwd = 2, ylim = c(0, max(gbm.tune$train.error)))
+lines(gbm.tune$cv.error, col = 'purple', lwd = 2)
+abline(v = min, lty = 2, lwd = 2, col = 'red')
+legend('topright', legend = c('Training error', 'CV error',"CV min"), 
+       col = c( 'green', 'purple','red'), lwd = 2, lty = c('solid', 'solid', 'dashed'))
+```
+
+c)
+```{r}
+## Compare variable importance
+par(mfrow = c(1,3))
+bag.plot <- varImpPlot(bag_tree,type = 1) #Normal Plot
+rf.plot <- varImpPlot(rf_tree, type = 1) #Normal Plot
+gbm.plot <- varImpPlot(gbm.tune, type = 1) #Normal Plot
+
+#Var.Importance of the bagging model
+bag.varplot <- importance(bag_tree,type = 1)
+bag.varplot <- bag.varplot[order(bag.varplot,decreasing = F),]
+barplot(bag.varplot,horiz = T,col = "pink",las=1,
+        xlab = "Mean decrease in MSE (%)",ylab = "Features",
+        main = "Variable Importance for bagging mdoel",cex.names = 0.8)  
+
+#Var.Importance of the Random forest model
+rf.varplot <- importance(rf_tree,type = 1)
+rf.varplot <- rf.varplot[order(rf.varplot,decreasing = F),]
+barplot(rf.varplot,horiz = T,col = "orange",las=1,
+        xlab = "Mean decrease in MSE (%)",ylab = "Features",
+        main = "Variable importance for Random Forest model",cex.names = 0.8)
+
+#Variable importance plot for GBM model
+summary(gbm.tune,las=2,cex.names=0.7,main="Variable Importance for GBM")
+
+#Partial Dependence plots
+#Find the best tree.
+best_tree <- gbm.perf(gbm.tune)
+
+par(mfrow=c(1,2))
+plot.gbm(gbm.tune,1,best_tree,ylab= "Predicted probability of total_UPDRS")#age
+plot.gbm(gbm.tune,2,best_tree,ylab= "Predicted Probability of total_UPDRS")#sex
+plot.gbm(gbm.tune,17,best_tree,ylab= "Predicted Probability of total_UPDRS")#DFA
+
+```
+
+d)
+```{r}
+library(Metrics)
+
+###Model performance
+par(mfrow=c(1,1))
+plot((bag_tree$mse),type = "l",xlab = "Number of trees",ylab = "CV Error",lwd=2,
+     main = "Comparison of models",ylim = c(0,max((rf_tree$mse))))
+lines((rf_tree$mse),type = "l",col="red",lwd=2)
+lines((gbm.tune$cv.error),type = "l",col="blue",lwd=2)
+legend("topright", legend = c("Bagging","Random Forest","Gradient Boost"),
+       col = c("black","red","blue"),lwd = 2)
+
+#Predictions on testing set.
+yhat.bag <- predict(object = bag_tree,newdata = test)
+yhat.rf <- predict(object = rf_tree,newdata = test)
+yhat.gbm <- predict(object = gbm.tune,test)
+
+round(rmse(test$total_UPDRS,yhat.bag),3) #Bagging model
+round(rmse(test$total_UPDRS,yhat.rf),3) #random forest model
+round(rmse(test$total_UPDRS,yhat.gbm),3) #GBM 
+
+#Plotting the actual and predicted distributions.
+par(mfrow=c(1,2))
+hist(test$total_UPDRS,xlab = "Actual probabilities (%)",main = "Actual response variable")
+hist(yhat.bag,xlab = "Predicted probabilities (%)",main = "Predicted response variable")
+par(mfrow=c(1,1))
+```
+
+e)
+```{r}
+unseen.data <- read.csv(file = "Q2testing.csv",header = T,stringsAsFactors = T)
+testing <- predict(object = rf_tree,newdata = unseen.data)
+testing<-round(testing,3)
+final.pred <- as.data.frame(testing)
+write.csv(x = final.pred,file = "rsssam008.csv", row.names = FALSE)
+```
+
