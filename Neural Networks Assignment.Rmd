@@ -1,0 +1,395 @@
+---
+title: "CA2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Question 1
+a)
+```{r}
+rm(list = ls(all = TRUE))
+library(beepr)
+beep()
+
+dat_train = read.table('Rondebosch21km_2021_Train.txt', h = TRUE)
+dat_val = read.table('Rondebosch21km_2021_Validate.txt', h = TRUE)
+dat_test = read.table('Rondebosch21km_2021_Test.txt', h = TRUE)
+head(dat_train, 5)
+
+dat_train$Sex<- as.factor(dat_train$Sex)
+dat_train$ShoeBrand<- as.factor(dat_train$ShoeBrand)
+
+dat_val$Sex<- as.factor(dat_val$Sex)
+dat_val$ShoeBrand<- as.factor(dat_val$ShoeBrand)
+
+plot(dat_train$Speed_21km~dat_train$Nutrition, xlab="Nutrition",ylab="Speed")
+plot(dat_train$Speed_21km~dat_train$Age_Scl, xlab="Age",ylab="Speed")
+plot(dat_train$Speed_21km~dat_train$Sex, xlab="Sex",ylab="Speed")
+plot(dat_train$Speed_21km~dat_train$ShoeBrand, xlab="ShoeBrand",ylab="Speed")
+```
+
+b)
+```{r}
+Xtrain = model.matrix(Speed_21km ~ Nutrition+Age_Scl+Sex+ShoeBrand, data = dat_train)
+Xtrain = Xtrain[,-1]
+
+Ytrain = matrix(dat_train$Speed_21km,nrow = nrow(dat_train),ncol = 1) 
+
+Xval   = model.matrix(Speed_21km ~ Nutrition+Age_Scl+Sex+ShoeBrand, data = dat_val)
+Xval   = Xval[,-1]
+
+Yval   = matrix(dat_val$Speed_21km,nrow = nrow(dat_val),ncol = 1) 
+```
+
+c)
+```{r}
+# Specify activation functions for the hidden and output layers:
+sig1 = function(x)
+{
+  1/(1+exp(-x))
+}
+sig2 = function(x)
+{
+  x
+}
+
+# Write a function that evaluates the neural network (forward recursion):
+# X     - Input matrix (N x p)
+# Y     - Output matrix(N x q)
+# theta - A parameter vector (all of the parameters)
+# m     - Number of nodes on hidden layer
+# lam   - Regularisation parameter (see later)
+neural_net = function(X,Y,theta, m, lam)
+{
+  # Relevant dimensional variables:
+  N = dim(X)[1]
+  p = dim(X)[2]
+  q = dim(Y)[2]
+  
+  # Populate weight-matrix and bias vectors:
+  index = 1:(p*m)
+  W1    = matrix(theta[index],p,m)
+  index = max(index) + 1:(m*q)
+  W2    = matrix(theta[index],m,q)
+  index = max(index) + 1:m
+  b1    = matrix(theta[index],m,1)
+  index = max(index) + 1:q
+  b2    = matrix(theta[index],q,1)
+  
+  # Evaluate network:
+  out   = rep(0,N)
+  error = rep(0,N)
+  for(i in 1:N)
+  {
+    a0 = matrix(X[i,],ncol = 1)
+    a1 = sig1(t(W1)%*%a0+b1)
+    a2 = sig2(t(W2)%*%a1+b2)
+    
+    out[i] = a2
+    error[i] = (Y[i]-a2)^2
+  }
+  
+  # Calculate error:
+  E1 = sum(error)/N
+  E2 = E1+lam/N*(sum(W1^2)+sum(W2^2)) #Regularization parameter
+  
+  # Return predictions and error:
+  return(list(out = out, E1 = E1, E2 = E2))
+}
+```
+
+d)
+```{r}
+# We need to know the number of parameters in the network:
+numpars= function(X,Y,m)
+{
+   p = dim(X)[2]    #Number of predictors
+   q = dim(Y)[2]    #Number of outputs
+  return(p*m+m*q+m+q)
+}
+
+#m=3
+set.seed(2021)
+param3      = numpars(X = Xtrain,Y = Ytrain,m =3) 
+theta_rand3 = runif(param3,-1,1)
+res3        = neural_net(Xtrain,Ytrain,theta_rand3,m=3,0)
+res3$out
+res3$E1
+
+#Optimization
+# Set up an objective function:
+obj3 = function(param3)
+{
+  res3 = neural_net(Xtrain,Ytrain,param3,m=3,0)
+  return(res3$E1)
+}
+obj3(theta_rand3)
+
+res_opt3 = nlm(obj3,theta_rand3, iterlim = 250)
+plot(abs(res_opt3$gradient), type = 'h')
+res_opt3$estimate
+
+#Validation
+M_seq3   = 10
+Train_E3 = rep(NA,M_seq3) 
+Val_E3   = rep(NA,M_seq3)
+lams3    = exp(seq(-10,-1, length =M_seq3))
+for(i in 1:M_seq3)
+{
+  # Optimize under constraint corr. lams[i]
+  lambda3     = lams3[i]
+  theta_rand3 = runif(param3,-1,1)
+  res_opt3    = nlm(obj3,theta_rand3, iterlim = 200)
+  
+  
+  res13 = neural_net(Xtrain,Ytrain,res_opt3$estimate,m=3,0)
+  res23 = neural_net(Xval,Yval,res_opt3$estimate,m=3,0)
+  
+  Train_E3[i] = res13$E1
+  Val_E3[i]   = res23$E1
+
+  print(paste0('Val_Run_',i))
+}
+beep()
+plot(Val_E3~lams3, type = 'l', col = 4, ylim = c(0,max(Val_E3)), lwd = 3)
+lines(Train_E3~lams3, lwd = 2)
+
+which.min(Val_E3)
+lambda3 = lams3[which.min(Val_E3)]
+
+
+
+
+#m=5
+param5 = numpars(X = Xtrain,Y = Ytrain,m =5) 
+set.seed(2021)
+theta_rand5 = runif(param5,-1,1)
+res5        = neural_net(Xtrain,Ytrain,theta_rand5,m=5,0)
+res5$out
+res5$E1
+
+# Set up an objective function:
+obj5 = function(param5)
+{
+  res5 = neural_net(Xtrain,Ytrain,param5,m=5,0)
+  return(res5$E1)
+}
+obj5(theta_rand5)
+
+res_opt5 = nlm(obj5,theta_rand5, iterlim = 250)
+plot(abs(res_opt5$gradient), type = 'h')
+res_opt5$estimate
+
+#Validation
+M_seq5   = 10
+Train_E5 = rep(NA,M_seq5) 
+Val_E5   = rep(NA,M_seq5)
+lams5    = exp(seq(-10,-1, length =M_seq5))
+for(i in 1:M_seq5)
+{
+  # Optimize under constraint corr. lams[i]
+  lambda5     = lams5[i]
+  theta_rand5 = runif(param5,-1,1)
+  res_opt5    = nlm(obj5,theta_rand5, iterlim = 200)
+  
+  
+  res15 = neural_net(Xtrain,Ytrain,res_opt5$estimate,m=5,0)
+  res25 = neural_net(Xval,Yval,res_opt5$estimate,m=5,0)
+  
+  Train_E5[i] = res15$E1
+  Val_E5[i]   = res25$E1
+
+  print(paste0('Val_Run_',i))
+}
+beep()
+
+plot(Val_E5~lams5, type = 'l', col = 4, ylim = c(0,max(Val_E5)), lwd = 3)
+lines(Train_E5~lams5, lwd = 2)
+
+which.min(Val_E5)
+lambda5 = lams5[which.min(Val_E5)]
+
+#Combine graphs
+plot(Val_E5~lams5, type = 'l', col = "blue", ylim = c(2,5), lwd = 1, xlab=expression(lambda),ylab="Validation Error")
+lines(Val_E3~lams3, lwd = 1, col="green")
+legend('bottomleft', c("m=5","m=3"), col=c("blue","green"), lwd=1)
+```
+
+e)
+```{r}
+sq = 100
+X1dummy = seq(min(dat_train$Nutrition), max(dat_train$Nutrition), length = sq)
+X2dummy = seq(min(dat_train$Age_Scl), max(dat_train$Age_Scl), length = sq)
+
+# Males
+male = expand.grid(Nutrition = X1dummy, Age_Scl = X2dummy, ShoeBrandNike = 1,  SexMale = 1)
+male = as.matrix(X_grid.male)
+
+
+Y_grid = cbind(rep(0, sq*sq))
+resp.male = neural_net(male ,Y_grid , theta = res_opt3$estimate, 3, 0)
+z.male = matrix(-resp.male$out, sq, sq)
+
+cols = rev(colorRampPalette(c('darkred','red','blue','lightblue'))(24))
+
+filled.contour(X1.dummy, X2.dummy, z.male, xlab = 'Nutrition', ylab = 'Age', col=cols)
+
+#Female
+female = expand.grid(Nutrition = X1dummy, Age_Scl = X2dummy, ShoeBrandNike = 1,  SexMale = 0)
+female = as.matrix(female)
+
+
+resp.female = neural_net(female ,Y_grid , theta = res_opt3$estimate, 3,0)
+z.female = matrix(resp.female$out, sq, sq)
+
+filled.contour(X1dummy, X2dummy, z.female, xlab = 'Nutrition', ylab = 'Age', col=cols)
+```
+
+f)
+```{r}
+#Test Set into Matrices
+Xtest <- model.matrix(~Nutrition+Age_Scl+Sex+ShoeBrand, data = dat_test)
+Xtest <- Xtest[,-1]
+Ydummy <- matrix(0, nrow = nrow(Xtest), ncol = 1)
+
+Restest = neural_net(Xtest, Ydummy,res_opt3$estimate,m=3,lambda3)
+predictions <- Restest$out
+
+pred = data.frame(predictions = matrix(predictions, ncol = 1))
+write.table(pred,'RSSSAM008_STA4026S_CA22.csv', quote = F, row.names = F, sep = ',')
+```
+
+
+Question 2
+a)
+```{r}
+# Let’s fake a dataset and see if the network evaluates:
+set.seed(2020)
+N = 50
+x = runif(N,-1,1)
+e = rnorm(N,0,1)
+y = 2*sin(3*pi*x)+e
+plot(y~x, pch = 16, col = 'blue')
+
+# Get the data in matrix form:
+X = matrix(x,N,1)
+Y = matrix(y,N,1)
+
+
+# Specify activation functions for the hidden and output layers:
+sig1 = function(x)
+{
+  1/(1+exp(-x))
+}
+
+sig2 = function(x)
+{
+  x
+}
+
+
+# Write a function that evaluates the neural network (forward recursion):
+# X     - Input matrix (N x p)
+# Y     - Output matrix(N x q)
+# theta - A parameter vector (all of the parameters)
+# m     - Number of nodes on hidden layer
+# lam   - Regularisation parameter (see later)
+neural_net = function(X,Y,theta, m, lam)
+{
+  # Relevant dimensional variables:
+  N = dim(X)[1]
+  p = dim(X)[2]
+  q = dim(Y)[2]
+  
+  # Populate weight-matrix and bias vectors:
+  index = 1:(p*m)
+  W1    = matrix(theta[index],p,m)
+  index = max(index) + 1:(m*q)
+  W2    = matrix(theta[index],m,q)
+  index = max(index) + 1:m
+  b1    = matrix(theta[index],m,1)
+  index = max(index) + 1:q
+  b2    = matrix(theta[index],q,1)
+  
+  # Evaluate network:
+  out   = rep(0,N)
+  error = rep(0,N)
+
+  for(i in 1:N)
+  {
+    a0 = matrix(X[i,],ncol = 1)
+    a1 = sig1(t(W1)%*%a0+b1)
+    a2 = sig2(t(W2)%*%a1+b2)
+    out[i]   = a2
+    error[i] = (Y[i]-a2)^2
+  }
+  
+  # Calculate error:
+  E1 = sum(error)/N
+  #E2 = ...
+  
+  # Return predictions and error:
+  return(list(out = out, E1 = E1))
+}
+
+# We need to know the number of parameters in the network:
+m          = 10
+p          = dim(X)[2]
+q          = dim(Y)[2]
+npars      = p*m+m*q+m+q
+theta_rand = runif(npars,-2,2)
+res        = neural_net(X,Y,theta_rand,m,0)
+
+# Set an objective and minimize
+obj = function(pars)
+{
+  res = neural_net(X,Y,pars,m,0)
+  return(res$E1)
+}
+
+res_opt = nlm(obj,theta_rand, iterlim = 250)
+
+#gradient checking
+theta = res_opt$estimate
+h     = 1/10
+x.new = seq(min(x),max(x),length=N)
+grad_check = c()
+for(k in 1:length(x.new))
+{
+  x_kp = x.new
+  x_km = x.new
+  x_kp[k] = x_kp[k]+h/2
+  x_km[k] = x_km[k]-h/2
+  
+  x_kp = as.matrix(x_kp,N,1)
+  x_km = as.matrix(x_km,N,1)
+  
+  res_kp  =  neural_net(x_kp,Y,theta,m,0)
+  res_km  =  neural_net(x_km,Y,theta,m,0)
+  
+  grad_check[k] = (res_kp$out[k]-res_km$out[k])/h
+}
+
+res        = neural_net(X,Y,theta,m,0)
+tab = cbind(grad_check,res$grad)
+
+plot(grad_check, type = 'l', lwd = 1, col="blue", ylab="Gradient")
+points(res$grad,col = 2,cex = 2)
+lines(6*pi*cos(3*pi*x.new), lwd = 1, col="green", lty= "dashed")
+legend('bottomright', c("The difference of the generated gradients","Derivative of the true target function"), col=c("blue","green"), lwd=1, lty= c("solid","dashed"))
+
+```
+
+b)
+```{r}
+
+```
+
+c)
+```{r}
+
+```
+
