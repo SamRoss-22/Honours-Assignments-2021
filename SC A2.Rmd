@@ -1,0 +1,131 @@
+---
+title: "Assignment 2"
+output:
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+```
+
+Question 1 
+
+Maximum Likelihood  
+```{r}
+logLikelihood <- function(x, theta, gamma) {
+  logLikelihoodfunc <- -sum(log(1 + ((x-theta)/gamma)^2)) - length(x)*log(pi*gamma)
+}
+
+x <- c(1.77, -0.23, 2.76, 3.80, 3.47, 56.75, -1.34, 4.24, -2.44, 3.29, 3.71, -2.40, 4.53, -0.07, -1.05, -13.87, -2.53, -1.75, 0.27, 43.21)
+
+theta <- seq(-20,20,1/20)
+gamma <- 1
+ll<-rep(0,length(theta))
+
+for (i in 1:length(theta)) 
+  ll[i] <- logLikelihood(theta[i],x,gamma)
+plot(theta,ll,type="l", xlab="theta", ylab="L(theta)/L(theta^)",
+               main="Cauchy Log Likelihood", col = "green")
+```
+The log likelihood was calculated from the cauchy function to obtain this graph. 
+
+MLE using Newton-Raphson method
+```{r results='hide'}
+x <- c(1.77, -0.23, 2.76, 3.80, 3.47, 56.75, -1.34, 4.24, -2.44, 3.29, 3.71, -2.40, 4.53, -0.07, -1.05, -13.87, -2.53, -1.75, 0.27, 43.21)
+
+logLikelihood_cauchy <- function(x,theta){
+  sum (-log(1+(x-theta)^2))
+}
+
+fdash <- function(x,theta) {
+  z1<- sum(2*(x-theta)/(1+(x-theta)^2))
+  return(z1)
+}
+
+fdashdash <- function(x,theta) {
+  z2<- sum (4*(x-theta)^2/(1+(x-theta)^2)^2 - 2/(1+(x-theta)^2))
+  return(z2)
+}
+
+mle_trial <- function(x,theta1) {
+  theta1=0
+  theta = theta1
+  
+  while (TRUE){
+  theta1 <- theta
+  theta =theta - (fdash(theta,x)/fdashdash(theta,x))
+  
+   if ((abs(theta-theta1))<0.0001)
+   {break}
+    
+}
+  
+print(theta1)
+
+}
+mle_trial(x,-1)
+```
+
+Using this sum we subbed in different starting values into x_0. The outputs for the specific starting points are (1.713673,  2.817492,  -0.192385,  1.713561,  1.713591,  -0.1922105,  2.817502,  2.817506,  1.713493) and (-11, -1, 0, 1.5, 4, 4.7, 7, 8, 38) respectfully. 
+median(x) = 1.713661.       mean(x) = 2.817426
+
+By carrying out this equation using different starting points, it appeared that the mean is not a good starting point as this is too large and might consider the second peak to the right as the MLE and not the true MLE which is at -0.192. Wherever the chosen starting points lie will converge to the maximum peak closest to it.
+
+
+
+Bisecting Method
+
+```{r results='hide'}
+cauchy_prime<- function(theta){
+  sum(2*(x-theta)/(1+(x-theta)^2))
+}
+
+f<-function(x, a=-1, b=1){c<-(a+b)/2
+
+while(TRUE)
+{
+    if ((cauchy_prime(a)*cauchy_prime(c))<=0){
+      c1 = c
+      b=c
+      c<-(a+b)/2
+    }
+
+    else{
+      c1 = c
+      a=c
+      c<-(a+b)/2
+      
+    }
+    if((abs(c-c1))<0.0001){
+      break
+    }
+  }
+  print(c)
+  
+}
+f(x, a=-1, b=1)
+```
+
+```{r}
+x <- seq(-15,15,1/20)
+MLE_bisection <- dcauchy(x, location = -0.192, scale = 1)
+plot(x,MLE_bisection,type="l", main = "MLE", xlab= "theta", ylab="f(theta)", col = "blue")
+```
+The bisection method is another approach to finding the root of any continuous function in a particular interval (where two values with opposite signs are known). It is a robust method compared the Newton-Raphson method; however, it can be comparatively slow in finding a solution. Using the bisection method the MLE was found to be -0.192.
+Manners in which the bisection method may fail to find the global maximum would be using intervals that don’t contain the global maximum and using an interval where the function takes values of the same sign. To show these I used values 8 and 12 and got an output of 14.99995. This doesn’t work as the values need to span an entire range of the function. Although choosing a random value close to the root has no advantage either as it may require many iterations to converge.
+
+
+Results Discussion
+Obtaining the MLE using Newton-Raphson method along with using the bisection method confirmed our answer. These were two different ways of obtaining the root of our function each with their own advantages and disadvantages. 
+In terms of which method worked best; Newton’s method outperforms the bisection method in terms of convergence speed as it contains the derivative. Although the bisection method requires much less information about f so it’s easier to obtain. 
+I think the most efficient method to use though would be a combination of the two. Starting with the bisection until you get a rough estimate of the root, then use Newton’s method to refine your estimate. 
+
+
+Question 2 
+
+
+
+https://math.stackexchange.com/questions/1043635/when-bisection-method-doesnt-work-for-finding-roots
+
+https://blogs.sas.com/content/iml/2017/11/27/method-of-moments-estimates-mle.html

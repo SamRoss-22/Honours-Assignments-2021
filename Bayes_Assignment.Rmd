@@ -1,0 +1,190 @@
+---
+title: "Bayes Assignment 1"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# Packages required
+
+require(MASS)
+require(cubature)
+
+#Lets simulate some data
+set.seed(2021)
+
+n = 150 # Number of data points
+X.c = data.frame(matrix(rnorm(5*n), ncol=5))
+colnames(X.c) = c("X1", "X2", "X3", "X4", "X5")
+
+X = as.matrix(cbind(1, X.c)) # Design matrix
+e = matrix(rnorm(n), ncol=1) # Errors
+
+beta.true = matrix(c(1, 0, 10, 0, 2, -3), ncol=1)
+Y = X%*%beta.true + e # Observations
+```
+
+```{r}
+bayes_reg = function(X, y, nsamps){
+# The function produces posterior samples for the parameters from a
+# Bayesian linear regression model.
+# X is the design matrix
+# y is the response variable
+# nsamps = the number of Gibbs samples to simulate
+# Note that you can change the burn-in sample in the last line
+a = 1
+b =1
+
+
+# Some pre-computations
+q = ncol(X)
+M = diag(1, q, q)
+XtX = (t(X) %*% X)
+Btilde =0
+Bhat = solve(XtX)%*%(t(X)%*%y)
+sigma <- 1
+
+
+# Some important quantities for beta | sigma, y, X
+muB= (solve(M +(XtX)))%*%(XtX%*%Bhat)  
+
+# Some important quantities for sigma | y, X
+A2 = solve(t(Y)%*%Y-t(muB)%*%(M+XtX)%*%muB)
+shape = n/2
+Sigma = sigma*solve(M+XtX)
+ 
+
+# Initialize matrix to store Gibbs samples
+Samples = matrix(NA, nrow = nsamps, ncol = q + 1)
+
+
+# Perform the Gibbs sampling
+for (i in 1:nsamps){
+# Sample regression coefficients
+  Samples[i, -1] = mvrnorm(n=1, mu = muB, Sigma = sigma*solve(M+XtX))
+  
+# Sample residual variance
+  rate=A2/2
+  Samples[i, 1] = 1/rgamma(1, shape=shape+a, rate=rate+b)
+  Sigma = solve(M+XtX)*Samples[i, 1]
+
+}
+return(Samples[floor(nsamps/2):nsamps,])
+}
+post_reg = bayes_reg(X, y, nsamps=100000)
+```
+
+
+```{r}
+#trace plots for each of the regression coefficients.
+par(mfrow=c(2,3), mar=c(4,4,1,1)) 
+plot(post_reg[,1], type="l", xlab=expression(paste("Iteration number for ", sigma^2)), ylab=expression(paste(sigma^2," Sample values"))) 
+plot(post_reg[,2], type="l", xlab=expression(paste("Iteration number for ", beta[0])), ylab=expression(paste(beta[0]," Sample values")))
+plot(post_reg[,3], type="l", xlab=expression(paste("Iteration number for ",beta[1])), ylab=expression(paste(beta[1]," Sample values")))
+plot(post_reg[,4], type="l", xlab=expression(paste("Iteration number for ",beta[2])), ylab=expression(paste(beta[2]," Sample values")))  
+plot(post_reg[,5], type="l", xlab=expression(paste("Iteration number for ",beta[3])), ylab=expression(paste(beta[3]," Sample values")))
+plot(post_reg[,6], type="l", xlab=expression(paste("Iteration number for ",beta[4])), ylab=expression(paste(beta[4]," Sample values")))
+plot(post_reg[,7], type="l", xlab=expression(paste("Iteration number for ",beta[5])), ylab=expression(paste(beta[5]," Sample values")))
+```
+
+```{r}
+
+#density plots for each of the regression coefficients.
+par(mfrow=c(2,3), mar=c(4,4,1,1)) 
+
+
+plot(density(post_reg[,1]), xlab=expression(sigma^2), main="")  
+abline(v=c(1.411829 ,1.76966733 ,2.218959 ), col=c("red","blue", "red", "green"))
+
+
+plot(density(post_reg[,2]), xlab=expression(beta[0]), main="")  
+abline(v=c(0.849296,1.06815274 ,1.285507  ,1) , col=c("red","blue", "red", "green"))
+
+
+plot(density(post_reg[,3]), xlab=expression(beta[1]), main="") 
+abline(v=c(-0.2965191  ,-0.09374080  ,0.1081922 ,0 ) , col=c("red","blue", "red", "green"))
+
+
+plot(density(post_reg[,4]), xlab=expression(beta[2]), main="")
+abline(v=c(9.58500 ,9.80190240 ,10.01767  ,10 ), col=c("red","blue", "red", "green"))
+
+
+plot(density(post_reg[,5]), xlab=expression(beta[3]), main="")
+abline(v=c(-0.2876497 ,-0.06441761  ,0.1565082 ,0 ) , col=c("red","blue", "red", "green"))
+abline(v=0 , col="green")
+
+plot(density(post_reg[,6]), xlab=expression(beta[4]), main="")
+abline(v=c(1.683328 ,1.88741171 ,2.091264 ,2 ), col=c("red","blue", "red", "green"))
+
+
+plot(density(post_reg[,7]), xlab=expression(beta[5]), main="")
+abline(v=c(-3.212818,-2.97907346,-2.745781,-3), col=c("red","blue", "red", "green"))
+legend('topleft', c("credibility interval", "sample mean","true beta"),lty=1, col=c("red","blue", "green"), cex = 1)
+
+```
+
+
+```{r}
+#sample average
+apply(post_reg, 2, mean)
+```
+
+```{r}
+#95% credibility interval
+apply(post_reg, 2, function(x){quantile(x, c(0.025, 0.975))})
+```
+
+```{r}
+#Q2
+gammaprob = function(gamma){
+# The function computes the probabilities of [ gamma | sigma^2, y, X ]
+# It extracts the appropriate design matrix and creates the appropriate
+# posterior for integration.
+# The function returns a probability for a given choice of gamma.
+  
+# Create appropriate design matrix using the input gamma
+q=sum(gamma)
+M=M=diag(1,q+1,q+1)
+
+#slicing
+gammax<- matrix(NA,nrow=n)
+gammax[,1]=1
+normx=X[,2:6]
+
+for (i in 1:length(gamma)){
+  if (gamma[i]==1){
+    gammax=cbind(gammax,normx[,i])
+  }
+  
+}
+
+gamma=c(1,gamma)
+keep=(gamma==1)
+
+# Create a function to be integrated
+gamfunc = function(beta){
+likelihood = exp(-1/2*t(y-gammax%*%beta)%*%(y-gammax%*%beta))
+prior = (-1/2)*t(beta)%*%M%*%beta
+return(likelihood*prior)
+}
+
+# Extract the bounds for integration
+lower = apply(post_reg,2,mean)-5*apply(post_reg,2,sd)
+lower = lower[2:7]
+upper = apply(post_reg,2,mean)+5*apply(post_reg,2,sd)
+upper = upper[2:7]
+
+lower=lower[keep]
+upper=upper[keep]
+
+# Perform the integration to obtain a value proportional to the probability
+res = hcubature(gamfunc, lower, upper, absError = 1e-80, tol = 1e-3)
+return(res$integral)
+}
+```
+
+

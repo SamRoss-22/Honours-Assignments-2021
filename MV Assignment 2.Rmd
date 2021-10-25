@@ -1,0 +1,269 @@
+---
+title: "MV A2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#EDA
+```{r}
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(CCA)
+library(gridExtra)
+library(ca)
+library(psych)
+library(MASS)
+library(klaR)
+
+
+#Uni
+summary(NationalTrack)
+describe(NationalTrack)
+
+a <-NationalTrack%>% dplyr::select(-c( Gender,Country,countrylabel,Hemishpere))
+boxplot(wp,xlab="Track",ylab="Time(seconds)")
+
+as<-a[, c(4:8)]*60 
+s<-a[,c(1:3)]
+wp<- merge(s,as)
+
+table(NationalTrack$Gender)
+table(NationalTrack$countrylabel)
+table(NationalTrack$Hemishpere)
+
+
+#Multi
+correlate(NationalTrack)
+plot_correlate(NationalTrack)
+
+b <-NationalTrack%>% dplyr::select(-c( Country,countrylabel,Hemishpere)) %>% group_by(Gender)%>%summarise(across(everything(), list(mean)))
+
+c <-NationalTrack%>% dplyr::select(-c( Gender,Country,countrylabel))%>% group_by(Hemishpere)%>%summarise(across(everything(), list(mean)))
+```
+
+#Question B - PCA
+```{r}
+#1
+NTmen<-NationalTrack %>% filter(Gender=="Male")%>% dplyr::select (-c(Gender, Country,countrylabel,Hemishpere,m3000))
+
+(NTmen.pca <- prcomp(NTmen, scale. = T, center = T)) #corr
+(sum.NTmen<-summary(NTmen.pca))
+
+round(NTmen.pca$rotation,4)
+
+#screeplot
+plot(sum.NTmen$importance[2,]*100,type = "b", xlab = "Principal component",
+     ylab = "% Variance explained", las = 1,col="red") 
+
+biplot(NTmen.pca, choices = c(1,2))
+
+
+male_pca2 <-princomp(NTmen, cor = TRUE, score  = TRUE) # PCA on cor matrix
+
+# Getting ranks of countries based on PC1:
+ ranks_pca <- cbind(NationalTrack$Country,male_pca2$scores[,1], rank(male_pca2$scores[,1]))
+ # Table of ranks
+  rank_table_pca <- as.data.frame(ranks_pca, col.names = c("Country", "Score", "Rank"))
+  rk<-rank_table_pca[!duplicated(rank_table_pca), ]
+  colnames(rk) <- c("Country", "Score", "Rank")
+  rk$Rank<-as.numeric(rk$Rank)
+   rk$Score<-as.numeric(rk$Score)
+ rk$Score <- round(rk$Score ,2)
+  rk<-rk %>% arrange(Rank)
+
+
+
+
+#2 - seconds
+  mTs = NTmen[4:8]*60
+four = NTmen[1:3]
+
+#merge to create new dataframe
+NewNTmen = cbind(four,mTs)
+
+NewNTmen = NewNTmen[1:54,]
+
+denom = 1/NewNTmen[1:8]
+
+HM = denom[1]*100
+TH1 = denom[2]*200
+FH = denom[3]*400
+EH = denom[4]*800
+TH2 = denom[5]*1500
+MARA = denom[6]*42195
+FT = denom[7]*5000
+TT = denom[8]*10000
+mperSecData = cbind(HM,TH1,FH,EH,TH2,MARA,FT,TT)
+
+(NTmen.pca.sec <- prcomp(mperSecData, scale. = T, center = T)) #corr
+(sum.NTmen.sec<-summary(NTmen.pca.sec))
+
+round(NTmen.pca.sec$rotation,4)
+
+#screeplot
+plot(sum.NTmen.sec$importance[2,]*100,type = "b", xlab = "Principal component",
+     ylab = "% Variance explained", las = 1,col="red") 
+
+biplot(NTmen.pca.sec, choices = c(1,2))
+
+```
+
+#Question C - FA
+```{r}
+#1
+eigen <- eigen(cor(NTmen))
+eigen$values
+round(eigen$vectors,4)
+
+
+FA<-factanal(x=NTmen,correlation,factors=2, rotation="none",scores="Bartlett")
+
+# Getting ranks of countries based on PC1:
+ ranks_fa <- cbind(NationalTrack$Country,FA$scores[,1], rank(FA$scores[,1]))
+ # Table of ranks
+  rank_table_fa <- as.data.frame(ranks_fa, col.names = c("Country", "Score", "Rank"))
+  rk1<-rank_table_fa[!duplicated(rank_table_fa), ]
+  colnames(rk1) <- c("Country", "Score", "Rank")
+rk1$Rank<-as.numeric(rk1$Rank)
+   rk1$Score<-as.numeric(rk1$Score)
+ rk1$Score <- round(rk1$Score ,2)
+  rk1<-rk1 %>% arrange(Rank)
+ 
+ 
+#2-seconds
+eigen1 <- eigen(cor(mperSecData))
+eigen1$values
+round(eigen1$vectors,4)
+
+ 
+```
+
+
+#Question D - DA
+```{r}
+data<-NationalTrack%>% dplyr::select(-c(Gender, Country,countrylabel,m3000,m5000,m10000))
+data$Hemishpere<-as.factor(data$Hemishpere)
+
+fit1 <- lda(Hemishpere~., data = data)
+
+#Accuracy of Analysis
+pred <- predict(fit1,data)
+table(data$Hemishpere)
+(table(pred$class, data$Hemishpere))
+
+pairs(data, pch=21, bg=c("red", "green3", "blue") [unclass(data$Hemishpere)])
+
+#Perform lda with cross validation
+fit.cv <- lda(Hemishpere~., data = data, CV=TRUE)
+(table(fit.cv$class, data$Hemishpere))
+
+par(mfcol=c(12,12), oma=c(1,1,0,0), mar=c(1,1,1,0), tcl=-0.1, mgp=c(0,0,0))
+ldahist(data = pred$x[,1], g=data$Hemishpere)
+
+par(mfcol=c(12,12), oma=c(1,1,0,0), mar=c(1,1,1,0), tcl=-0.1, mgp=c(0,0,0))
+partimat(Hemishpere~., data = data,method="lda", 
+    plot.matrix = FALSE, plot.control = list())
+
+
+#QDA check
+(qda_grad <- qda(Hemishpere~., data = data))
+
+#check
+pred_qda <- predict(qda_grad, data)
+table(pred_qda$class, data$Hemishpere)
+```
+
+
+#Question E 
+```{r}
+short.dist<-NationalTrack%>% dplyr::select(m100, m200, m400)
+long.dist<-NationalTrack%>% dplyr::select(m800, m1500 , Marathon)
+
+ggpairs(short.dist)
+ggpairs(long.dist)
+
+#Examine Correlations
+matcor(short.dist, long.dist)
+
+#Perform canonical analysis
+cc1 <- cc(short.dist,long.dist)
+cc1$cor
+cc1$xcoef
+cc1$ycoef
+
+
+#Standardized short.dist coefficients using diagonal matrix of sd's
+s1 <- diag(sqrt(diag(cov(short.dist))))
+s1 %*% cc1$xcoef
+
+#Standardized Oil Rates coefficents using diagonal matrix of sd's
+s2 <- diag(sqrt(diag(cov(long.dist))))
+s2 %*% cc1$ycoef
+
+#Canonical loadings for short.dist Variables
+cc1$scores$xscores
+
+#Canonical loadings for long.dist Variables
+cc1$scores$yscores
+
+
+#Display Canonical correlations
+#Correlations between short.dist variables and their CCV
+cc1$scores$corr.X.xscores
+
+#Correlations between long.dist variables and their CCV
+cc1$scores$corr.Y.yscores
+
+#Correlations between short.dist variables and the CCV based on long.dist variables
+cc1$scores$corr.X.yscores
+
+#Correlations between long.dist variables and the CCV based on short.dist variables
+cc1$scores$corr.Y.xscores
+
+par(mfrow=c(2,2))
+plot(cc1$scores$yscores[,1], cc1$scores$xscores[,1])
+plot(cc1$scores$yscores[,2], cc1$scores$xscores[,2])
+plot(cc1$scores$yscores[,3], cc1$scores$xscores[,3])
+
+plot(cc1$scores$yscores[,1], cc1$scores$yscores[,2])
+plot(cc1$scores$xscores[,1], cc1$scores$xscores[,2])
+
+plot(cc1$scores$yscores[,1], cc1$scores$yscores[,3])
+plot(cc1$scores$xscores[,1], cc1$scores$xscores[,3])
+
+plot(cc1$scores$yscores[,3], cc1$scores$yscores[,2])
+plot(cc1$scores$xscores[,3], cc1$scores$xscores[,2])
+
+plot(cc1$scores$yscores[,2], cc1$scores$yscores[,3])
+plot(cc1$scores$xscores[,2], cc1$scores$xscores[,3])
+```
+
+
+#Question F
+```{r}
+QF<-NationalTrack%>% dplyr::select(c(Country,m100, m200, m400, m800, m1500 ))
+
+QF1 <- within(QF, quartile <- as.integer(cut(m100, quantile(m100, probs=0:4/4), include.lowest=TRUE)))
+QF2 <- within(QF, quartile <- as.integer(cut(m200, quantile(m200, probs=0:4/4), include.lowest=TRUE)))
+QF3 <- within(QF, quartile <- as.integer(cut(m400, quantile(m400, probs=0:4/4), include.lowest=TRUE)))
+QF4 <- within(QF, quartile <- as.integer(cut(m800, quantile(m800, probs=0:4/4), include.lowest=TRUE)))
+QF5 <- within(QF, quartile <- as.integer(cut(m1500, quantile(m1500, probs=0:4/4), include.lowest=TRUE)))
+
+w<-cbind(QF$Country,QF1$quartile,QF2$quartile,QF3$quartile,QF4$quartile,QF5$quartile)
+w<-as.data.frame(w)
+rownames(w) <- make.names(w[,1], unique = TRUE)
+w<-w[,-1]
+w[, 1:5] <- sapply(w[, 1:5], as.numeric)
+colnames(w) <- c("m100", "m200", "m400", "m800", "m1500" )
+
+ca(w)
+plot(ca(w), map = "symmetric", col=c("blue", "red"))
+plot(ca(w), mass=TRUE, contrib = "absolute", map = "rowprincipal", arrows = c(TRUE, TRUE))
+plot(ca(w), mass=TRUE, contrib = "absolute", map = "colprincipal", arrows = c(TRUE, TRUE))
+summary(ca(w))
+
+```

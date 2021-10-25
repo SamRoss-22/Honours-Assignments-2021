@@ -1,0 +1,481 @@
+---
+title: "MV assignment"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Q2
+```{r}
+#a
+#means
+Q2<-read.table('CA1_Q2.txt')
+
+Q2 = Q2[-1,]
+Q2<- data.frame(sapply(Q2, function(x) as.numeric(as.character(x))))
+
+aggregate(Q2$V1, list(Q2$V5), FUN=mean) 
+aggregate(Q2$V2, list(Q2$V5), FUN=mean) 
+aggregate(Q2$V3, list(Q2$V5), FUN=mean) 
+aggregate(Q2$V4, list(Q2$V5), FUN=mean) 
+
+
+#heat map
+library(reshape2)
+library(ggplot2)
+library(dplyr)
+library(egg)
+
+time_period1<-Q2 %>% dplyr::select(V1, V2, V3, V4,V5) %>% filter(V5=='1')
+time_period1<-time_period1[1:4]
+blah<-round(cor(time_period1),2)
+
+melted_cormat1 <- melt(blah)
+
+
+time_period2<-Q2 %>% dplyr::select(V1, V2, V3, V4,V5) %>% filter(V5=='2')
+time_period2<-time_period2[1:4]
+blah2<-round(cor(time_period2),2)
+
+melted_cormat2 <- melt(blah2)
+
+
+time_period3<-Q2 %>% dplyr::select(V1, V2, V3, V4,V5) %>% filter(V5=='3')
+time_period3<-time_period3[1:4]
+blah3<-round(cor(time_period3),2)
+
+melted_cormat3 <- melt(blah3)
+
+
+
+q<-ggplot(data = melted_cormat1, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+   name="Pearson\nCorrelation") +
+  theme_minimal()+ 
+ theme(legend.position="none",axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+ ggtitle("4000 BC")
+
+r<-ggplot(data = melted_cormat2, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+   name="Pearson\nCorrelation") +
+  theme_minimal()+ 
+ theme(legend.position="none",axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+ ggtitle("3300 BC")
+
+s<-ggplot(data = melted_cormat3, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+   name="Pearson\nCorrelation") +
+  theme_minimal()+ 
+ theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()+ ggtitle("1850 BC") 
+
+figure <- egg::ggarrange(q,r,s, nrow = 1)
+
+```
+
+```{r}
+#b)
+library(plot3D)
+cent_X2 <- round(scale(time_period1, center = T, scale = F),3)
+# Obtain deviation vectors
+d1_ <- matrix(cent_X2[,1])
+d2_ <- matrix(cent_X2[,2])
+d3_ <- matrix(cent_X2[,3])
+d4_ <- matrix(cent_X2[,4])
+
+#angle between the deviation vectors
+Ld1= sqrt(t(d1_)%*%d1_)
+Ld2= sqrt(t(d3_)%*%d3_)
+
+angle=(t(d1_)%*%d3_)/Ld1%*%Ld2
+acos(-angle)
+
+D = as.matrix(cbind(d1_,d2_))
+
+arrows3D(x0=rep(0,2), y0=rep(0,2), z0 = rep(0,2), x1 = D[1,], y1 = D[2,], z1 = D[3,],
+         lwd = 2, colvar = c(1,2), colkey = FALSE,
+         xlim = c(-2,5), ylim = c(-2,5), zlim = c(-5,2), ticktype = 'detailed',
+         xlab = 'n1', ylab = 'n2', zlab = 'n3', theta = -30 , phi = 0)
+
+text3D(-0.5,-0.5, expression(theta[12]), add = T)
+text3D(x = D[1,], y = D[2,], z = D[3,], c(expression(d[1]), expression(d[2])), add = T)
+
+
+```
+
+```{r}
+#c
+#marginal normality
+n_ <- nrow(time_period2) ; p_ <- ncol(time_period2)
+
+qqp_ <- qqnorm(time_period2$V1, pch = 16) #creates QQ-plot 
+qqline(time_period2$V1) #Adds line
+round(cor(qqp_$x, qqp_$y), 4)
+
+qqp_2 <- qqnorm(time_period2$V2, pch = 16) #creates QQ-plot 
+qqline(time_period2$V2) #Adds line
+round(cor(qqp_2$x, qqp_2$y), 4)
+
+qqp_3 <- qqnorm(time_period2$V3, pch = 16) #creates QQ-plot 
+qqline(time_period2$V3) #Adds line
+round(cor(qqp_3$x, qqp_3$y), 4)
+
+qqp_4 <- qqnorm(time_period2$V4, pch = 16) #creates QQ-plot 
+qqline(time_period2$V4) #Adds line
+round(cor(qqp_4$x, qqp_4$y), 4)
+
+
+#Testing multivariate normality
+
+#1. Calculate squared distances
+d2_ <- mahalanobis(time_period2, colMeans(time_period2), cov = var(time_period2)) #Compare with T4_3[, 5]
+
+#2. Order the squared distances
+d2_ord_ <- sort(d2_)
+
+mean(d2_ < qchisq(0.5, 4))
+
+
+#3. Graph the pairs
+qcp_ <- qchisq((1:n_ - 0.5)/n_, ncol(time_period2))
+plot(qcp_, d2_ord_, main="Chi-square plot", pch = 16, 
+     ylab = '')
+title(ylab = expression(d[(j)]^2), line = 2)
+abline(a = 0, b = 1, col = 'red')
+
+```
+
+```{r}
+#d
+
+V1<-Q2$V1
+V2<-Q2$V2
+V3<-Q2$V3
+V4<-Q2$V4
+V5<-Q2$V5
+
+# t intervals
+n=30
+alpha = 0.05
+mean(V1) - qt((1-alpha)/2,df=n-1)*sd(V1)/sqrt(n)
+mean(V1) + qt((1-alpha)/2,df=n-1)*sd(V1)/sqrt(n)
+
+mean(V2) - qt((1-alpha)/2,df=n-1)*sd(V2)/sqrt(n)
+mean(V2) + qt((1-alpha)/2,df=n-1)*sd(V2)/sqrt(n)
+
+mean(V3) - qt((1-alpha)/2,df=n-1)*sd(V3)/sqrt(n)
+mean(V3) + qt((1-alpha)/2,df=n-1)*sd(V3)/sqrt(n)
+
+mean(V4) - qt((1-alpha)/2,df=n-1)*sd(V4)/sqrt(n)
+mean(V4) + qt((1-alpha)/2,df=n-1)*sd(V4)/sqrt(n)
+
+#simultaneous T2
+p=4
+c2 <- ((n-1)*p)/(n-p)*qf(1-alpha, p, n-p)
+
+(round(mu1_lower <- mean(V1) - sqrt(c2)*sqrt(sd(V1)/n), 3))
+(round(mu1_upper <- mean(V1) + sqrt(c2)*sqrt(sd(V1)/n), 3))
+
+(round(mu2_lower <- mean(V2) - sqrt(c2)*sqrt(sd(V2)/n), 3))
+(round(mu2_upper <- mean(V2) + sqrt(c2)*sqrt(sd(V2)/n), 3))
+
+(round(mu3_lower <- mean(V3) - sqrt(c2)*sqrt(sd(V3)/n), 3))
+(round(mu3_upper <- mean(V3) + sqrt(c2)*sqrt(sd(V3)/n), 3))
+
+(round(mu4_lower <- mean(V4) - sqrt(c2)*sqrt(sd(V4)/n), 3))
+(round(mu4_upper <- mean(V4) + sqrt(c2)*sqrt(sd(V4)/n), 3))
+
+#Bonferroni
+(round(mean(V1) - qt(1-alpha/(2*p), n-1)*sqrt(sd(V1)/n), 3))
+(round(mean(V1) + qt(1-alpha/(2*p), n-1)*sqrt(sd(V1)/n), 3))
+
+(round(mean(V2) - qt(1-alpha/(2*p), n-1)*sqrt(sd(V2)/n), 3))
+(round(mean(V2) + qt(1-alpha/(2*p), n-1)*sqrt(sd(V2)/n), 3))
+
+(round(mean(V3) - qt(1-alpha/(2*p), n-1)*sqrt(sd(V3)/n), 3))
+(round(mean(V3) + qt(1-alpha/(2*p), n-1)*sqrt(sd(V3)/n), 3))
+
+(round(mean(V4) - qt(1-alpha/(2*p), n-1)*sqrt(sd(V4)/n), 3))
+(round(mean(V4) + qt(1-alpha/(2*p), n-1)*sqrt(sd(V4)/n), 3))
+```
+
+```{r}
+#e
+
+install.packages("biotools")
+library(biotools)
+data(new_Q2)
+boxM(new_Q2[, -5], new_Q2[, 5 ])
+```
+
+```{r}
+#f
+all_means <- Q2 %>% 
+  group_by(V5) %>% 
+  summarise(across(where(is.numeric), ~mean(.x)))
+
+de <- manova(cbind(V1,V2,V3,V4) ~ V5, data = all_means)
+ee <- summary(de, test = 'Wilks',tol=0)
+
+summary.aov(de)
+```
+
+
+Q3
+```{r}
+#a
+Q3<-read.table('CA1_Q3.txt')
+Q3 = Q3[-1,]
+Q3 <- data.frame(sapply(Q3, function(x) as.numeric(as.character(x))))
+Q3<- as.matrix(Q3)
+
+G<- svd(Q3)
+
+r1<- as.matrix(G$u[,1])%*%diag(G$d)[1,1]%*%t(G$v)[1,]
+r2<- as.matrix(G$u[,1:2])%*%diag(G$d)[1:2,1:2]%*%t(G$v)[1:2,]
+r3<- as.matrix(G$u[,1:3])%*%diag(G$d)[1:3,1:3]%*%t(G$v)[1:3,]
+r4<- as.matrix(G$u[,1:4])%*%diag(G$d)[1:4,1:4]%*%t(G$v)[1:4,]
+r5<- as.matrix(G$u[,1:5])%*%diag(G$d)[1:5,1:5]%*%t(G$v)[1:5,]
+r6<- as.matrix(G$u[,1:6])%*%diag(G$d)[1:6,1:6]%*%t(G$v)[1:6,]
+r7<- as.matrix(G$u[,1:7])%*%diag(G$d)[1:7,1:7]%*%t(G$v)[1:7,]
+r8<- as.matrix(G$u[,1:8])%*%diag(G$d)[1:8,1:8]%*%t(G$v)[1:8,]
+r9<- as.matrix(G$u[,1:9])%*%diag(G$d)[1:9,1:9]%*%t(G$v)[1:9,]
+r10<-as.matrix(G$u[,1:10])%*%diag(G$d)[1:10,1:10]%*%t(G$v)[1:10,]
+r11<-as.matrix(G$u[,1:11])%*%diag(G$d)[1:11,1:11]%*%t(G$v)[1:11,]
+r12<-as.matrix(G$u[,1:12])%*%diag(G$d)[1:12,1:12]%*%t(G$v)[1:12,]
+
+
+error_1<-Q3-r1
+error_2<-Q3-r2
+error_3<-Q3-r3
+error_4<-Q3-r4
+error_5<-Q3-r5
+error_6<-Q3-r6
+error_7<-Q3-r7
+error_8<-Q3-r8
+error_9<-Q3-r9
+error_10<-Q3-r10
+error_11<-Q3-r11
+error_12<-Q3-r12
+
+errorM<- round(apply(error_3,2,mean),2)
+
+```
+
+
+```{r}
+#b
+
+#Note how the histogram is approximately balanced about its mean, which appears to be located at zero, which is precisely what we would anticipate, given the fact that the numbers in the variable x are standardised.
+
+error.sd<- round(apply(error_11,2,sd),2)
+
+stand.e<-matrix(NA,nrow=100,ncol=12)
+for (i in 1:12){
+   stand.e[,i]<-error_11[,i]-errorM[i]/error.sd[i]
+}
+hist(stand.e,main='',xlab=expression(Delta[3]),col='grey')
+```
+
+
+```{r}
+#c
+
+corX = cor(Q3)
+
+corX3 = cor(r3)
+
+hist(corX,breaks = 40, main = "", xlab = "Correlation coefficients for X")
+hist(corX3, breaks = 40, main = "",xlab = paste("Correlation coefficients for", expression(X[3])))
+```
+
+
+```{r}
+#d
+frobN = c()
+
+errors = list(error_1,error_2,error_3,error_4,error_5,error_6,error_7,error_8,error_9,error_10,error_11,error_12)
+
+for (i in 1:12){
+  
+  frobN[i] = norm(errors[[i]], type = "F")
+  
+}
+
+plot(frobN, type = "l", xlab = "Rank", ylab = "Frobenius Value", col="red")
+
+
+colnames(Q3)
+
+colnames(r3)= colnames(Q3)
+rownames(r3)= rownames(Q3)
+
+knitr::kable(head(r3))
+
+colnames(error_3)= colnames(Q3)
+rownames(error_3)= rownames(Q3)
+
+knitr::kable(head(error_3))
+
+```
+
+Q4
+```{r}
+Q4<-read.table('CA1_Q4.txt')
+Q4 = Q4[-1,]
+Q4 <- data.frame(sapply(Q4, function(x) as.numeric(as.character(x))))
+
+xbar_ <- apply(Q4, 2, mean)
+S_ <- var(Q4)
+n_ <- nrow(Q4)
+q_ <- ncol(Q4)
+
+#Contrast matrix 1
+(C1_ <- cbind(1, diag(-1, q_-1)))
+
+#Test statistic and p-value
+(T2 <- n_*t(C1_%*%xbar_) %*% solve(C1_%*%S_%*%t(C1_)) %*% (C1_%*%xbar_))
+round(1 - pf(T2*(n_-q_+1)/((n_-1)*(q_-1)), q_-1, n_-q_+1),2)
+
+```
+
+
+Q5
+```{r}
+Q5<-read.table('CA1_Q5.txt')
+#a
+attach(Q5)
+Q5 = Q5[-1,]
+Q5 <- data.frame(sapply(Q5, function(x) as.numeric(as.character(x))))
+
+Q5$V1 <- as.factor(Q5$V1)
+Q5$V2 <- as.factor(Q5$V2)
+
+V1<-Q5$V1
+V2<-Q5$V2
+V3<-Q5$V3
+V4<-Q5$V4
+V5<-Q5$V5
+
+fabric <- cbind(V3, V4, V5)
+
+#Fit two-way MANOVA
+fit1 <- manova(fabric ~ V1*V2)
+(summary1 <- summary(fit1, test = 'Wilks'))
+
+#To conduct separate univariate ANOVA's
+#summary(aov(fabric ~ V1))
+#summary(aov(fabric ~ V2))
+x<-summary.aov(fit1)
+#print(xtable(x), file = '7.1.b2.1.tex')
+
+```
+
+Q6
+```{r}
+Q6<-read.table('CA1_Q6.txt')
+#a
+
+Q6 = Q6[-1,]
+Q6 <- data.frame(sapply(Q6, function(x) as.numeric(as.character(x))))
+
+X <- cbind(1, as.matrix(Q6[,4:6]))
+Y <- as.matrix(Q6[,1:3])
+n <- nrow(Q6) ; r <- ncol(X) - 1 ; m <- ncol(Y)
+
+#Calculate parameter estimates
+beta_hat <- solve((t(X)%*%X))%*%t(X)%*%Y
+
+#Decompose sum of squares and cross products
+Yhat <- X %*% beta_hat
+TotalSSP <- t(Y)%*%Y
+PredictedSSP <- t(Yhat)%*%Yhat
+E <- t(Y)%*%Y - t(Yhat)%*%Yhat 
+
+#Unbiased estimate of Sigma
+S <- E/(n-r-1)
+
+colnames(Q6) <- c(paste0('y', 1:3), paste0('x', 1:3))
+
+#Using lm function
+mvreg <- lm(cbind(y1, y2, y3) ~ ., data = Q6)
+summary(mvreg) # Gives all the univariate multiple regressions
+library(car)
+Manova(mvreg, test.statistic = 'Wilks')
+
+
+```
+
+```{r}
+#b
+
+res_ <- mvreg$residuals 
+st_res_ <- scale(res_) #standardised residuals
+
+qqnorm(st_res_, pch = 16)
+abline(a = 0, b = 1, col = 'red')
+
+plot(mvreg$fitted.values, res_, pch = 16, xlab = 'Predicted', ylab = 'Residuals')
+abline(h = 0, lty = 2, col = 'gray')
+
+res2 <- mvreg$residuals
+n2 <- nrow(res2) ; p2 <- ncol(res2)
+d22 <- mahalanobis(res2, colMeans(res2), cov = cov(res2)) 
+d2_ord2 <- sort(d22)
+qcp2 <- qchisq((1:n - 0.5)/n2, p2)
+# pdf('7.1.c1.pdf')
+plot(qcp2, d2_ord2, main = 'Chi-square plot', ylab = '', pch = 16)
+title(ylab = expression(d[(j)]^2), line = 2)
+abline(a = 0, b = 1, col = 'red')
+```
+
+```{r}
+#c
+
+#Predict for x1 = 165, x2 = 28, x3 = 6
+x0 <- c(1, 165, 28, 6)
+(Y0 <- t(beta_hat)%*%x0)
+
+#99% Simultaneous prediction intervals
+cbind(Y0, Y0) + t(matrix(c(-1,1)) %*% 
+                    (sqrt(m*(n-r-1)/(n-r-m)*qf(0.95, m, n-r-m))*
+                       sqrt((1 + t(x0)%*%solve(t(X)%*%X)%*%x0)%*%diag(S))))
+```
+
+```{r}
+#d
+
+eigen <- eigen(S[c(1,2,3), c(1,2,3)])
+xb <- xbar[c(1,2,3)]
+
+#Axis lengths
+(axis1length <- sqrt(eigen$values[1])*sqrt(c2/n))
+(axis2length <- sqrt(eigen$values[2])*sqrt(c2/n))
+(axis3length <- sqrt(eigen$values[3])*sqrt(c2/n))
+
+#Draw the ellipse
+phi <- atan2(eigen$vectors[2, 1], eigen$vectors[1, 1]) # angle of major axis
+t <- seq(0, 2*pi, 0.01) 
+xx <- xb[1] + axis1length*cos(t)*cos(phi) - axis2length*sin(t)*sin(phi)
+yy <- xb[2] + axis1length*cos(t)*sin(phi) + axis2length*sin(t)*cos(phi)
+sclx <- max(xx)*0.05 #Scaling factor
+scly <- max(yy)*0.05 #Scaling factor
+
+par(mfrow=c(1,1))
+# pdf('5.1.2.pdf')
+plot(xx, yy, type = 'l', lwd = 2.5, xlab = 'Weight', ylab = 'Girth',
+     xlim = c(min(xx) - sclx, max(xx) + sclx), ylim = c(min(yy) - scly, max(yy) + scly))
+points(xb[1], xb[2], pch = 16)
+```
+

@@ -1,0 +1,116 @@
+---
+title: "Bayes Project"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Q2
+```{r}
+# Packages required
+
+require(MASS)
+require(cubature)
+
+#Lets simulate some data
+set.seed(2021)
+
+LRdata <- read_csv("LRdata.csv")
+
+n = 300 # Number of data points
+X.c = LRdata[3:5]
+colnames(X.c) = c("X1", "X2", "X3")
+
+X = as.matrix(cbind(1, X.c)) # Design matrix
+y = as.matrix(LRdata$y) # Observations
+
+bayes_reg = function(X, y, nsamps){
+  # Produces posterior samples for the parameters from a 
+  # linear regression model. 
+  # We use vague priors for all parameters
+  # X is the design matrix. Here we include a column of 1's
+  # for the intercept
+  # y is the response variable
+  # nsamps = the number of Gibbs samples required
+  
+  shape = length(y)/2 # the shape parameter of the conditional posterior for sigma2
+  invXtX = solve(crossprod(X)) 
+  mean_beta = invXtX%*%t(X)%*%y # mean equation of the beta vector
+  
+  # outputs stored in 'Samples'
+  Samples = matrix(NA, nrow=nsamps, ncol=(1+NCOL(X)) )
+  
+  # residual variance, beta coefficients
+  s2 = 1 # initial value
+  
+  # residual covariance matrix
+  Sigma_beta = invXtX*s2
+
+  for (i in 1:nsamps){
+    # sample regression coefficients
+    Samples[i, -1] = mvrnorm(n=1, mu = mean_beta, Sigma = Sigma_beta)
+
+    # sample residual variance
+    rate = crossprod( y - X%*%matrix(Samples[i, -1], ncol=1) )/2
+    Samples[i, 1] = 1/rgamma(1, shape=shape, rate=rate)
+    Sigma_beta = invXtX*Samples[i, 1]
+  }
+  
+  #drop the burnin (remove half of the sample)
+  return(Samples[floor(nsamps/2):nsamps,])
+}
+post_reg = bayes_reg(X, y, nsamps=200000)
+```
+
+```{r}
+#trace plots for each of the regression coefficients.
+par(mfrow=c(2,3), mar=c(4,4,1,1)) 
+plot(post_reg[,1], type="l", xlab=expression(paste("Iteration number for ", sigma^2)), ylab=expression(paste(sigma^2," Sample values"))) 
+plot(post_reg[,2], type="l", xlab=expression(paste("Iteration number for ", beta[0])), ylab=expression(paste(beta[0]," Sample values")))
+plot(post_reg[,3], type="l", xlab=expression(paste("Iteration number for ",beta[1])), ylab=expression(paste(beta[1]," Sample values")))
+plot(post_reg[,4], type="l", xlab=expression(paste("Iteration number for ",beta[2])), ylab=expression(paste(beta[2]," Sample values")))  
+plot(post_reg[,5], type="l", xlab=expression(paste("Iteration number for ",beta[3])), ylab=expression(paste(beta[3]," Sample values")))
+
+```
+
+```{r}
+
+#density plots for each of the regression coefficients.
+par(mfrow=c(2,3), mar=c(4,4,1,1)) 
+
+
+plot(density(post_reg[,1]), xlab=expression(sigma^2), main="")  
+abline(v=c(15.67271   ,18.4029419   ,21.59657   ), col=c("red","blue", "red"))
+
+
+plot(density(post_reg[,2]), xlab=expression(beta[0]), main="")  
+abline(v=c(4.304187  ,4.7925523  ,5.284040  ) , col=c("red","blue", "red"))
+
+
+plot(density(post_reg[,3]), xlab=expression(beta[1]), main="") 
+abline(v=c(14.13146 ,14.6004048  ,15.07318  ) , col=c("red","blue", "red"))
+
+
+plot(density(post_reg[,4]), xlab=expression(beta[2]), main="")
+abline(v=c(-7.389389  ,-6.9114307   ,-6.433800  ), col=c("red","blue", "red"))
+
+
+plot(density(post_reg[,5]), xlab=expression(beta[3]), main="")
+abline(v=c(-0.2615602 ,0.2337384  ,0.7279197) , col=c("red","blue", "red"))
+#legend('topleft', c("credibility interval", "sample mean"),lty=1, col=c("red","blue"), cex = 1)
+
+```
+
+
+```{r}
+#sample average
+apply(post_reg, 2, mean)
+```
+
+```{r}
+#95% credibility interval
+apply(post_reg, 2, function(x){quantile(x, c(0.025, 0.975))})
+```
+

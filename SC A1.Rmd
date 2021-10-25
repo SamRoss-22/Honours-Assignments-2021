@@ -1,0 +1,160 @@
+---
+title: "Assignment 1"
+author: "Samantha Rosslind"
+date: "06/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+```{r}
+library(gapminder)
+require ( gapminder )
+head(gapminder)
+```
+
+Question 1
+
+a)
+```{r}
+Year <- gapminder %>%
+  filter(country == "Angola") %>%
+  select(country, year)
+Gdp <- gapminder %>%
+  filter(country == "Angola") %>%
+  select(country, gdpPercap)
+
+Ang_gpd<- cbind(Year,Gdp)
+
+
+#Ang_gpd <- gapminder %>%
+  filter(country == "Angola") %>%
+  select(country, year, gdpPercap)
+
+```
+
+b)
+```{r}
+ang_data<- gapminder %>%
+  select(country,gdpPercap) %>%
+  arrange(desc(gdpPercap)) %>%
+  filter(country == "Angola") 
+
+gdp_g_Ang <- median(ang_data$gdpPercap)
+
+contanalysis<- gapminder %>%
+  group_by(continent) %>%
+  summarize(median_gdpPercap = median(gdpPercap))
+
+cont_above <- contanalysis%>%
+  select(continent,median_gdpPercap)%>%
+  filter(contanalysis$median_gdpPercap>gdp_g_Ang)
+
+cont_above
+
+m<-count(cont_above)
+
+```
+
+c)
+```{r}
+
+```
+
+d)
+```{r}
+
+i<-gapminder %>%
+  group_by(country) %>%
+  summarize(Min= min(gdpPercap), Q1= quantile(gdpPercap, 0.25), Mean= mean(gdpPercap), Q3= quantile(gdpPercap, 0.75), Max= max(gdpPercap))
+```
+e)
+```{r}
+a<- gapminder%>%
+  group_by(country) %>%
+  strsplit(country, '')
+
+
+```
+
+Question 3 
+
+a) 
+It is The maximum difference index. It locates the maximum absolute difference between conditional subpopulation equated scores and the equated scores based on the overall population. It simulates
+samples from the exponential distribution function. All values in x that are greater than h (which is
+set to 2) are then stored in y. maxd then returns the values in y.
+
+
+b)The md function takes in a variable consisting of multiple simulated outcomes. It computes the density
+of the first simulation and plots this onto a set of axes. This plots a single line onto the density plot. Next, the
+density of the rest of the simulated results is calculated. These results are added onto the original plot
+using the lines function. The density function allows us to see the distribution of the average of the
+exponential distributions.
+
+
+c) m1 represents a simulation of the maxd function with sample size 100, run 1000 times. Similarly, m6
+represents a simulation of the maxd function with sample size 500 000, run 1000 times. It represents
+the change in variability 
+
+d) As the sample sizes increase, the variability of each sampling distribution decreases when moving from n = 100 to when n = 500 000.
+
+a) The maxd function takes a sample size of n into the function. It then generates n random numbers
+from an exponential distribution that has a rate of 1 and stores this in a variable x i.e. it simulates
+samples from the exponential distribution function. All values in x that are greater than h (which is
+set to 2) are then stored in y. maxd then returns the values in y.
+
+b) The md function takes in a variable consisting of multiple simulated outcomes. It computes the density
+of the first simulation and plots this onto a set of axes. The x axis starts at 0 and ends at 1. The y-axis
+starts at 0 and ends at hi (which is set at 1). This plots a single line onto the density plot. Next, the
+density of the rest of the simulated results is calculated. These results are added onto the original plot
+using the lines function. The density function allows us to see the distribution of the average of the
+exponential distributions.
+
+c) m1 represents a simulation of the maxd function with sample size 100, run 1000 times. Similarly, m6
+represents a simulation of the maxd function with sample size 500 000, run 1000 times. It represents
+the change in variability (variance decreases as sample size increases).
+
+d) There’s significantly more variability in the resulting plot when n = 100 compared to when n = 500 000.
+According to (S&DS, 1998), a bigger sample size results in a decrease in chance of observing extreme
+values. Furthermore, the observed values will tend to cluster close to the mean of the exponential
+distribution.
+
+
+
+
+
+
+a) The function maxd takes in two arguments, 'n' which is the sample size and 'h' which is some positive number. It then generates n random numbers by using an exponential distribution with a rate of 1. The function then checks which of these values are greater than h=2 and puts them into a vector 'y'.
+
+b) The md function takes in the first simulated sample, from maxd, out of 1000 simulations for m1 to m6. It plots the density
+of the sample values onto the y-axis and the sample values onto the x-axis. This forms a single line onto the set of axes.This function is then repeated for the remaining 999 simulations whereby adding  line plots all in different colours. 
+
+c) m1 represents how many values out of 100 randomly generated values from the exponential distribution are greater than 2 by doing a simulation repeated 1000 times. Similarly, m6
+represents the same thing however using a sample size of 500 000 repeated 1000 times.
+
+d) As the law of large numbers states that when the sample size increases, the sample mean converges to the true mean (a sample of independently and identically distributed random variables). Hence, as the sample size increase the variability or error decreases and the accuracy increases. Therefore, n=500000 iterations will have less variability than n=100 and appear more similar to the underlying exponential distribution. 
+
+e) Monte Carlo method, this is because of the repeated random sampling to obtain the density function and it is based on the law of large numbers.
