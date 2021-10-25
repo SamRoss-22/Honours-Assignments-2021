@@ -1,0 +1,512 @@
+---
+title: "Biostats A3"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+set.seed(1998)
+
+library(dplyr)
+library(geepack)
+library(nlme)
+library(MASS)
+library(lme4)
+library(lmerTest)
+library(survival)
+library(ggplot2)
+library(survminer)
+library(dlookr)
+library(brokenstick)
+
+m<-malaria[!duplicated(malaria[1]),]
+m2<-m %>% sample_frac(0.75)
+m2 <- m2[order(m2$pid),]
+m3<-merge(m2, malaria, by = "pid", all.x = FALSE)
+m3 <- m3[, -c(2:12)] 
+malaria<-m3[order(m3[,1], m3[,9]), ]
+colnames(malaria) <- c('pid','site','arm',"gender", "weight", "age", "Ploutcomeday","outcome","pday","pardens","gameprev","hb")
+```
+
+#Data Exploration
+```{r}
+x<-table(m2$arm)
+x2<-table(m2$site)
+x3<-table(m2$gender)
+x4<-table(m2$outcome)
+
+malaria$pid <- as.numeric(as.factor(malaria$pid))
+
+#cats
+barplot(x[order(x, decreasing = TRUE)],width=c(2,2),ylab="Number of Subjects",col=c("slateblue4", "yellow2"))
+barplot(x2[order(x2, decreasing = TRUE)],width=c(2,2),ylab="Number of Subjects",col=c("slateblue4", "yellow2", "olivedrab2", "orange"))
+barplot(x3[order(x3, decreasing = TRUE)],width=c(2,2),ylab="Number of Subjects",col=c("slateblue4", "yellow2"))
+barplot(x4[order(x4, decreasing = TRUE)],width=c(2,2),ylab="Number of Subjects",col=c("slateblue4", "yellow2", "olivedrab2"))
+
+#continuous
+levels(malaria$pid) <- 1:length(levels(malaria$pid))
+malaria$pid <- factor(malaria$pid, levels = rev(unique(malaria$pid)), ordered=TRUE) 
+malaria$pid <- as.numeric(malaria$pid)
+
+#density num&cat
+categ <- target_by(malaria, arm)
+cat_num <- relate(categ, age)
+cat_num1 <- relate(categ, gameprev)
+cat_num2 <- relate(categ, hb)
+cat_num3 <- relate(categ, weight)
+cat_num4 <- relate(categ, log(pardens))
+cat_num5 <- relate(categ, Ploutcomeday)
+plot(cat_num5)
+
+```
+
+
+
+```{r}
+#Question 1
+#pardens,pday,arm
+Q1<-malaria%>% dplyr::select(pid,arm,pday,pardens)%>% filter( between(pday, 0, 7) )
+Q1<-na.omit(Q1)
+attach(Q1)
+Q1$pardens<-log(pardens)
+
+#brokenstick
+plot(pday,Q1$pardens)
+lines(lowess(pday["SP">2],pardens["SP">2]),lwd=4,col="green") 
+lines(lowess(pday['SP/ART'>2]),lwd=4,col="blue") 
+legend("topright", legend = c('SP', 'SP/ART'),
+       lwd = 3, lty = 1, col = c("green", "blue"))
+
+interaction.plot(pday,arm,pardens,fun=mean,ylab="Mean parasite density (per microlitre of blood)" ,xlab="Day of measurement",col=c("green","blue"))
+
+#ModelBuilding
+#subject-specific random effect on intercept
+memodel1a<-lmer(pardens~arm*pday+(1|pid),data=Q1)
+summary(memodel1a)
+
+#random effects on intercept and slope
+memodel1b<-lmer(pardens~arm*pday+(pday|pid),data=Q1)
+summary(memodel1b)
+
+#Comparing the two models
+anova(memodel1a,memodel1b)
+
+#Validation
+qres<-residuals(memodel1b)
+qqnorm(qres,main="Residuals")
+qqline(qres)
+hist(qres)
+
+
+#Inference
+memodel1b<-lmer(pardens~arm*pday+(pday|pid),data=Q1)
+summary(memodel1b)
+anova(memodel1b)
+```
+          
+            
+#Question 2
+```{r}
+#Model Exploration
+#hb,pday,arm
+head(malaria)
+
+Q2<-malaria%>% filter( between(pday, 1, 42) )
+Q2<-na.omit(Q2)
+attach(Q2)
+
+interaction.plot(pday,arm,hb,fun=mean,ylab="Mean haemoglobin (grams per 100 ml of blood)" ,xlab="Day of measurement",col=c("green","blue"))
+
+boxplot(hb~pday*arm,data=Q2,xlab="Day of measurement",ylab="Haemoglobin",col="blue")
+
+Q2wide<-reshape(as.data.frame(Q2),timevar ="pday",idvar=c("pid","arm","pardens","gameprev"),v.names="hb",direction="wide")
+
+day <- subset(Q2wide, select=hb.3:hb.42)
+day<-na.omit(day)
+cor<-round(cor(day),3)
+```
+
+
+```{r}
+#Model Selection
+
+Q2$pid <- as.numeric(as.factor(Q2$pid))
+
+#exchangeable correlation
+model1 <- geeglm(hb~arm*pday, pid, family = gaussian,
+corstr = "exchangeable", data=Q2, id=pid, wave=pday)
+summary(model1)
+
+#autoregressive correlation
+model2 <- geeglm(hb~arm*pday, pid, family=gaussian, data=Q2,
+corstr = "ar1", id=pid, wave=pday)
+summary(model2)
+
+#unstructured correlation
+model3<- geeglm(hb~arm*pday, pid, family=gaussian, corstr = "unstructured",
+data=Q2, id=pday)
+summary(model3)
+
+#independence correlation
+model4<- geeglm(hb~arm*pday, pid, family=gaussian, corstr = "independence",
+data=Q2, id=pday)
+summary(model4)
+
+par(mfrow=c(1,2))
+obsmeans<-aggregate(Q2$hb,by=data.frame(Q2$pday,Q2$arm),mean)
+fitted<-aggregate(model1$fitted.values,by=data.frame(Q2$pday,Q2$arm),mean)
+
+plot(obsmeans$x~obsmeans$Q2.pday,xlab="Day",ylab="Observed means",main="Exchangeable")
+lines(fitted$V1[which(fitted$Q2.arm=="SP")]~fitted$Q2.pday[which(fitted$Q2.arm=="SP")],col="red")
+lines(fitted$V1[which(fitted$Q2.arm=="SP/ART")]~fitted$Q2.pday[which(fitted$Q2.arm=="SP/ART")],col="green")
+legend("topleft",legend=c('SP','SP/ART'),lty = c(1, 1),
+       col = c(2, 3),
+       lwd = 2)
+
+
+fitted1<-aggregate(model2$fitted.values,by=data.frame(Q2$pday,Q2$arm),mean)
+
+plot(obsmeans$x~obsmeans$Q2.pday,xlab="Day",ylab="Observed means",main="ar1")
+lines(fitted1$V1[which(fitted1$Q2.arm=="SP")]~fitted1$Q2.pday[which(fitted1$Q2.arm=="SP")],col="red")
+lines(fitted1$V1[which(fitted1$Q2.arm=="SP/ART")]~fitted1$Q2.pday[which(fitted1$Q2.arm=="SP/ART")],col="green")
+legend("topleft",legend=c('SP','SP/ART'),lty = c(1, 1),
+       col = c(2, 3),
+       lwd = 2)
+```
+
+
+```{r}
+#Model Validation
+
+fitted<-fitted(model2)
+res<-residuals(model2)
+par(mfrow=c(1,2))
+plot(fitted,res, xlab="Fitted Values", ylab = "Residuals", pch=19,col='slateblue4')
+hist(res, main = "", xlab = "Residuals",col='lightgreen')
+
+#Figure 3 shows that there is a departure from Normality with the residuals.Thus, it seems like the underlying assumptions were violated and the model is not valid.
+```
+
+```{r}
+#Inference
+model1a <- geeglm(hb~arm+pday, pid, family = gaussian,
+corstr = "exchangeable", data=Q2, id=pid, wave=pday)
+anova(model1,model1a)
+
+Q2$ref2 <- relevel(as.factor(Q2$arm), ref = "SP/ART")
+model1c <- geeglm(hb~Q2$ref2*pday, pid, family=gaussian,
+corstr = "exchangeable", data=Q2, id=pid, wave=pday)
+summary(model1c)
+
+coeff<-model1$coefficients
+se<-summary(model1)$coefficients["Std.err"]
+
+CI.SP.ART<-coef(model1)["armSP/ART"]+c(-1,1)*se["armSP/ART",]*1.96
+CI.time1<-coef(model1)["pday"]+c(-1,1)*se["pday",]*1.96
+CI.SPtime<-coef(model1)["armSP/ART:pday"]+c(-1,1)*se["armSP/ART:pday",]*1.96
+
+coeff3c<-model1c$coefficients
+se3b<-summary(model1c)$coefficients["Std.err"]
+CI.time2<-coef(model1c)["pday"]+c(-1,1)*se3b["pday",]*1.96
+
+CI<-rbind("SP/ART vs SP"=CI.SP.ART,
+"Day(SP)"=CI.time1,
+"Day(SP/ART)"=CI.time2,
+"SP/ART*Day"=CI.SPtime)
+detach(Q2)
+```
+
+
+
+
+#Question 3
+```{r}
+#gameprev,pday,arm
+Q3<-malaria%>% filter( between(pday, 14, 42) )
+Q3<-na.omit(Q3)
+attach(Q3)
+
+interaction.plot(pday,arm,gameprev,fun=mean,ylab="Mean prevalence of gametocytes" ,xlab="Day of measurement",col=c("green","blue"))
+
+Q3<-groupedData(gameprev~pday|pid,outer=~arm,data=Q3)
+
+(table1<-table(arm,gameprev))
+(prop.table(table1,1))
+(ftable(table(pday,arm,gameprev)))
+prop.table(ftable(table(pday,arm,gameprev)))
+
+barplot(tapply(gameprev,list(arm,pday),mean),beside=T,col=c("red","purple"))
+legend("topright", legend=c("SP", "SP/ART"),
+       col=c("red","purple"), lty=1 ,cex=0.8)
+
+Q3$pid <- as.numeric(as.factor(Q3$pid))
+
+#age,weight
+
+#Backwards approach
+#1. fit all univariate models
+mer<-glmer(gameprev~arm+pday+(1|pid),family=binomial(link=logit),data=Q3)
+mer2<-glmer(gameprev~arm+pday+age+(1|pid),family=binomial(link=logit),data=Q3)
+mer3<-glmer(gameprev~arm+pday+gender+(1|pid),family=binomial(link=logit),data=Q3)
+mer4<-glmer(gameprev~arm+pday+weight+(1|pid),family=binomial(link=logit),data=Q3)
+mer5<-glmer(gameprev~arm+pday+site+(1|pid),family=binomial(link=logit),data=Q3)
+mer6<-glmer(gameprev~arm+pday+pardens+(1|pid),family=binomial(link=logit),data=Q3)
+#summary(mer)
+anova(mer, mer6)
+
+
+#2. fit full model with all variables (all sig)
+mer.final<-glmer(gameprev~arm+pday+age+weight+(1|pid),family=binomial(link=logit),data=Q3)
+
+#explore for interaction
+#no ints
+mer.arm.int<-glmer(gameprev~arm*pday+age+weight+(1|pid),family=binomial(link=logit),data=Q3)
+mer.arm.int1<-glmer(gameprev~arm*age+pday+weight+(1|pid),family=binomial(link=logit),data=Q3)
+mer.arm.int2<-glmer(gameprev~arm*weight+age+pday+(1|pid),family=binomial(link=logit),data=Q3)
+anova(mer.arm.int2, mer.final)
+
+mer.pday.int<-glmer(gameprev~arm+pday*age+weight+(1|pid),family=binomial(link=logit),data=Q3)
+mer.pday.int1<-glmer(gameprev~arm+pday*weight+age+(1|pid),family=binomial(link=logit),data=Q3)
+anova(mer.pday.int1, mer.final)
+
+mer.age.int1<-glmer(gameprev~arm+pday+weight*age+(1|pid),family=binomial(link=logit),data=Q3)
+anova(mer.age.int1, mer.final)
+
+#Validation
+fitmod<-fitted(mer.final)
+plot(fitmod,ylab="fitted",xlab="pid")
+hist(gameprev)
+
+residuals<-residuals(mer.final)
+plot(fitmod,residuals,xlab="fitted")
+predp<-exp(fitmod)/(1+exp(fitmod))
+plot(predp~factor(gameprev),ylab="Predictive probability")
+
+#Interpretation
+# standard error of coefficient
+days_se <- sqrt(diag(vcov(mer.final)))
+
+# estimated coefficient
+days_coef <- fixef(mer.final)
+
+upperCI <-  days_coef + 1.96*days_se
+lowerCI <-  days_coef  - 1.96*days_se
+
+
+OR<-exp(fixef(mer.final))
+ORlcl<-exp(lowerCI)
+OR<-exp(summary(mer.final)$coefficients[,1])
+ORucl<-exp(upperCI)
+results<-cbind(ORlcl,OR,ORucl)
+
+detach(Q3)
+```
+
+
+
+#Data Exploration for SA
+```{r}
+#categorical-KM
+one<- survfit(surv.rel ~ site, conf.type="log-log", data = malaria)
+plot(one,col=c("slateblue4", "yellow2", "olivedrab2", "orange"),lty=(1),xaxp=c(0,160,16))
+title(xlab="Time (Days)")
+mtext(side=3,text="Proportion",at=-2)
+legend('bottomleft',legend=c("Boane","Magude","Namaacha","Catuane"),lty=(1),col=c("slateblue4", "yellow2", "olivedrab2", "orange"))
+
+two<-survfit(surv.rel ~ gender, conf.type="log-log", data = malaria)
+plot(two,col=c("slateblue4", "yellow2"),lty=c(1),xaxp=c(0,160,16))
+title(xlab="Time (Days)")
+mtext(side=3,text="Proportion",at=-2)
+legend('bottomleft',legend=c("F","M"),lty=(1),col=c("slateblue4", "yellow2"))
+
+three<-survfit(surv.rel ~ outcome, conf.type="log-log", data = malaria)
+plot(three,col=c("slateblue4", "yellow2", "olivedrab2"),lty=c(1),xaxp=c(0,160,16))
+title(xlab="Time (Days)")
+mtext(side=3,text="Proportion",at=-2)
+legend('bottomleft',legend=c("Failure","Success","LTFU"),lty=(1),col=c("slateblue4", "yellow2", "olivedrab2"))
+
+#continuous-scatterplot
+fail <- filter(malaria, outcome=="Failure")
+malaria<-na.omit(malaria)
+fail$pid <- as.numeric(as.factor(fail$pid))
+plot(fail$pday,fail$hb,col="slateblue4", lwd=5, xlab="Day of measurement", ylab="Parasite density (per microlitre of blood)", main="")
+plot(fail$pday,fail$gameprev,col="yellow2", lwd=5, xlab="Day of measurement", ylab="Parasite density (per microlitre of blood)", main="")
+plot(fail$pday,fail$pardens,col="olivedrab2", lwd=5, xlab="Day of measurement", ylab="Parasite density (per microlitre of blood)", main="")
+plot(fail$pid,fail$age,col="orange", lwd=5, xlab="Day of measurement", ylab="Parasite density (per microlitre of blood)", main="")
+plot(fail$pid,fail$weight,col="slateblue4", lwd=5, xlab="Day of measurement", ylab="Parasite density (per microlitre of blood)", main="")
+plot(fail$pid,fail$Ploutcomeday,col="yellow2", lwd=5, xlab="Day of measurement", ylab="Parasite density (per microlitre of blood)", main="")
+
+
+
+
+malaria %>% group_by(outcome,arm) %>% count()
+
+malaria %>% filter(outcome == c('Success',"LTFU")) %>% 
+  dplyr::select(hb) %>% 
+  summary()
+```
+
+
+#Question 4
+```{r}
+str(malaria$outcome)
+malaria$rcensored <- (malaria$outcome==c("Failure"))
+str(malaria$rcensored)
+malaria$surv.rel <- Surv(malaria$Ploutcomeday,malaria$rcensored)
+
+#comparing groups
+fit2_ <- survfit(surv.rel ~ arm, conf.type="log-log", data = q5)
+
+#get summaries of survival dbns
+fit2_
+quantile(fit2_, 0.05)
+summary(fit2_,censor=TRUE)
+quantile(fit2_, 0.05)$quantile
+
+#KM plot
+plot(fit2_,col=c("red","blue"),lty=c(1,2),xaxp=c(0,160,16))
+title(main="Time to failure",xlab="Time (Days)")
+mtext(side=3,text="Proportion",at=-2)
+legend('bottomleft',legend=c("SP","SP/ART"),lty=c(1,2),col=c("red","blue"))
+
+plot(fit2_,col=c("red","blue"),lty=c(1,2),xaxp=c(0,160,16), conf.int = 0.95)
+title(main="Time to failure",xlab="Time (Days)")
+mtext(side=3,text="Proportion",at=-2)
+legend('bottomleft',legend=c("SP","SP/ART"),lty=c(1,2),col=c("red","blue"))
+plot(fit2_,col=c("red","blue"),lty=c(1,2),xaxp=c(0,160,16), conf.times = c(30))
+
+#using ggplot, tick marks show censored points
+ggsurvplot(fit = fit2_, xlab = "Days", ylab = "Overall survival probability")
+ggsurvplot(fit = fit2_, xlab = "Days", ylab = "Overall survival probability", conf.int = T, risk.table = T)
+
+#logrank test
+survdiff(surv.rel~arm, data = q5)
+
+```
+
+
+#Question 5
+```{r}
+q5 <- filter(malaria, pday=="0")
+attach(q5 )
+
+# Step 1, fit univariate models
+coxph(surv.rel ~ arm, data = q5 )
+#coxph(surv.rel ~ hb, data = q5 )
+#coxph(surv.rel ~ weight, data = q5 )
+coxph(surv.rel ~ site, data = q5 )
+#coxph(surv.rel ~ age, data = q5 )
+#coxph(surv.rel ~ gender, data = q5 )
+#coxph(surv.rel ~ log(q5$pardens), data = q5 )
+#coxph(surv.rel ~ gameprev, data = q5 )
+
+# Step 2, fit full model plus treatment
+mod.full_ <- coxph(surv.rel ~ arm+site, data = q5)
+summary(mod.full_)
+
+
+#Step 4, examine nonsig vars from step 1
+mod.age2 <- coxph(surv.rel ~ arm+site+ age, data = q5)
+anova(mod.full_, mod.age2)
+#leave age
+mod.haem2 <- coxph(surv.rel ~ arm+site + pardens, data = q5)
+anova(mod.full_, mod.haem2)
+#leave pardens
+mod.haem23 <- coxph(surv.rel ~ arm+site + gameprev, data = q5)
+anova(mod.full_, mod.haem23)
+#remove gameprev 
+mod.haem22 <- coxph(surv.rel ~ arm+site + gender, data = q5)
+anova(mod.full_, mod.haem22)
+# leave gender
+mod.age22 <- coxph(surv.rel ~ arm+site +hb, data = q5)
+anova(mod.full_, mod.age22)
+#remove pday
+mod.haem22 <- coxph(surv.rel ~ arm+site +weight, data = q5)
+anova(mod.full_, mod.haem22)
+# leave weight
+
+
+
+#Step 5, interactions
+mod.interact1<-coxph(surv.rel ~ arm*site, data = q5)
+anova(mod.full_, mod.interact1)
+#no
+mod.interact1a<-coxph(surv.rel ~ gameprev*pday + arm + pardens, data = q5)
+anova(newfullmod, mod.interact1a)
+#no
+mod.interact1b<-coxph(surv.rel ~ gameprev*pardens + pday + arm, data = q5)
+anova(newfullmod, mod.interact1b)
+#yes
+
+mod.interact1c<-coxph(surv.rel ~ gameprev + arm*pday + pardens, data = q5)
+anova(newfullmod, mod.interact1c)
+#no
+mod.interact1d<-coxph(surv.rel ~ gameprev + pardens*arm + pday, data = q5)
+anova(newfullmod, mod.interact1d)
+#no
+
+
+mod.interact2<-coxph(surv.rel ~ gameprev + pardens*pday + arm , data = malaria)
+anova(newfullmod, mod.interact2)
+#yes
+
+#final model-do model interpretation 
+new.mod.full_ <- coxph(surv.rel ~ arm+site, data = q5)
+
+
+
+
+
+
+#Model checking
+#1. Check form of covariates in model, use martingale residuals
+#create reduced dataset without missing points
+
+q5$arm <- as.numeric(as.factor(q5$arm))
+q5$pid <- as.numeric(as.factor(q5$pid))
+q5$site <- as.numeric(as.factor(q5$site))
+
+cox.arm<- coxph(surv.rel ~ site, data = q5)
+res.arm<- residuals(cox.arm,type="martingale")
+plot(q5[,2],res.arm, xlab = "site", ylab= 'Martingale residuals')
+
+cox.arm<- coxph(surv.rel ~ arm, data = q5)
+res.arm<- residuals(cox.arm,type="martingale")
+plot(q5[,3],res.arm, xlab = "arm", ylab= 'Martingale residuals')
+
+
+#2. Look for outliers, use deviance residuals
+res.dev_ <- residuals(new.mod.full_,type="deviance")
+plot(q5$pid, res.dev_, ylab = "deviance residuals", 
+     xlab = "Patient ID", pch = 19, col = "grey")
+text(q5$pid,res.dev_, labels = q5$pid)
+
+sort(res.dev_)
+q5[(res.dev_>3 | res.dev_ < -1), ]
+summary(q5[,2:3])
+
+
+#3. Look for influential observation, uses score residuals
+dfbeta_ <- residuals(new.mod.full_, type="dfbeta")
+
+par(mfrow=c(1,2))
+for (j in 1:4) {
+  plot(dfbeta_[,j],ylab=names(coef(new.mod.full_))[j], pch = 19, col = "lightgrey" )
+  text(dfbeta_[,j], labels = q5$pid)
+  abline(h=0,lty=2)
+}
+
+q5[which(dfbeta_[,1] < -0.05),]
+q5[which(dfbeta_[,2] < -0.05),]
+
+#4. test of PH asumptions, Schoenfeld residuals
+cox.zph(new.mod.full_)
+par(mfrow=c(1:2))
+plot(cox.zph(new.mod.full_))
+
+
+
+```

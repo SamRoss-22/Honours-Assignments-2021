@@ -1,0 +1,386 @@
+---
+title: "Biostats A2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+set.seed(7860)
+mydata <- Assgn2Data[sample(1:1000,500),]
+```
+
+```{r}
+which(rownames(mydata)==5)
+which(names(myvector)==2)
+```
+
+```{r}
+#univariate exploration
+mydata[sapply(mydata, is.character)] <- lapply(mydata[sapply(mydata, is.character)], as.factor)
+
+summary(mydata)
+
+describe(mydata)
+
+```
+
+```{r}
+#multi exploration
+
+
+correlate(mydata)
+plot_correlate(mydata)
+
+#density num&cat
+categ <- target_by(mydata, HIV.status)
+cat_num <- relate(categ, age)
+cat_num
+w<-plot(cat_num)
+
+categ1 <- target_by(mydata, HIV.status)
+cat_num1 <- relate(categ1, edu.years)
+cat_num1
+qq<-plot(cat_num1)
+
+categ2 <- target_by(mydata, HIV.status)
+cat_num2 <- relate(categ2, wealth.quintile)
+cat_num2
+u<-plot(cat_num2)
+plot_grid(u, qq, w, ncol=1, nrow=3)
+
+
+#num&cat
+num <- target_by(mydata, age)
+num_cat <- relate(num, HIV.status)
+num_cat
+rr<-plot(num_cat)+ theme(legend.position = "none") 
+
+mydata$wealth<-mydata$wealth.quintile
+num1 <- target_by(mydata, wealth)
+num_cat1 <- relate(num1, HIV.status)
+num_cat1
+ad<-plot(num_cat1,main='wealth')+ theme(legend.position = "none") 
+
+num2 <- target_by(mydata, edu.years)
+num_cat2 <- relate(num2, HIV.status)
+num_cat2
+summary(num_cat2)
+ss<-plot(num_cat2,main='')+ theme(legend.position = "none") 
+plot_grid(ad, rr, ss, ncol=3, nrow=1)
+
+
+
+HIV.status<-mydata$HIV.status
+marital.status<-mydata$marital.status
+res.type<-mydata$res.type
+province<-mydata$province
+employment<-mydata$employment
+
+#cat&cat
+df<- data.frame(HIV.status,marital.status,employment,province,res.type)
+plot1<-ggplot(df, aes(HIV.status, ..count..)) + geom_bar(aes(fill = marital.status), position = "dodge")
+plot2<-ggplot(df, aes(HIV.status, ..count..)) + geom_bar(aes(fill = employment), position = "dodge")
+p3<-ggplot(df, aes(HIV.status, ..count..)) + geom_bar(aes(fill = province), position = "dodge")
+p4<-ggplot(df, aes(HIV.status, ..count..)) + geom_bar(aes(fill = res.type), position = "dodge")
+
+library(gridExtra)
+plot_grid(plot2, plot1, p3, p4, ncol=2, nrow=2)
+
+```
+
+```{r}
+#SES-wealth,edu,employ
+library("epiDisplay")
+attach(mydata)
+mydata<-na.omit(mydata)
+
+mydata$HIV.cat<- factor(mydata$HIV.status)
+mydata$employ.cat<- factor(mydata$employment)
+mydata$marital.cat<- factor(mydata$marital.status)
+mydata$province.cat<- factor(mydata$province)
+mydata$res.cat<- factor(mydata$res.type)
+mydata$wealth.cat<- factor(mydata$wealth.quintile)
+
+#determine the effect of SES on the probability of a positive HIV infection
+cc(HIV.cat, edu.cat, decimal = 3)
+cc(mydata$HIV.cat, mydata$employ.cat, decimal = 3)
+cc(mydata$HIV.cat, mydata$wealth.cat, decimal = 3)
+
+#Backwards approach
+#1. fit all univariate models
+mod1a_ <- glm(HIV.cat ~ 1, data=mydata, family=binomial())
+mod1b_ <- glm(HIV.cat ~ employ.cat ,data=mydata, family=binomial())
+mod1c_ <- glm(HIV.cat ~ age, data=mydata, family=binomial())
+mod1d_ <- glm(HIV.cat ~ edu.years, data=mydata, family=binomial())
+mod1e_ <- glm(HIV.cat ~ marital.cat, data=mydata, family=binomial())
+mod1f_ <- glm(HIV.cat ~ province.cat, data=mydata, family=binomial())
+mod1g_ <- glm(HIV.cat ~ res.cat, data=mydata, family=binomial())
+mod1h_ <- glm(HIV.cat ~ wealth.cat, data=mydata, family=binomial())
+
+
+summary(mod1b_)
+summary(mod1c_)
+summary(mod1d_)
+summary(mod1e_)
+summary(mod1f_)
+summary(mod1g_)
+summary(mod1h_)
+anova(mod1a_, mod1e_, test = "LRT")
+
+#2. fit full model with all variables (all sig)
+mod.full_ <- glm(HIV.cat ~ province.cat+age+employ.cat+edu.years+wealth.cat, family = binomial(), data = mydata)
+summary(mod.full_)
+
+#explore for interaction
+mod.age.inter <- glm(HIV.cat ~province.cat+age*employ.cat,data=mydata,family=binomial())
+anova(mod.full_, mod.age.inter, test = "LRT")
+summary(mod.age.inter)
+lrtest(mod.full_,mod.age.inter)
+
+mod.sex.inter <- glm(HIV.cat ~province.cat*employ.cat+age, data=mydata,family=binomial())
+anova(mod.full_, mod.sex.inter, test = "LRT")
+summary(mod.sex.inter)
+lrtest(mod.full_,mod.sex.inter)
+
+mod.both.inter<-glm(HIV.cat~province.cat*employ.cat + age*employ.cat,data=mydata,family=binomial())
+anova(mod.age.inter, mod.both.inter, test = "LRT")
+summary(mod.both.inter)
+lrtest(mod.full_,mod.both.inter)
+
+
+
+mod.age.inter2 <- glm(HIV.cat ~province.cat+age*edu.years,data=mydata,family=binomial())
+anova(mod.full_, mod.age.inter2, test = "LRT")
+summary(mod.age.inter2)
+lrtest(mod.full_,mod.age.inter2)
+
+mod.sex.inter2 <- glm(HIV.cat ~province.cat*edu.years+age, data=mydata,family=binomial())
+anova(mod.full_, mod.sex.inter2, test = "LRT")
+summary(mod.sex.inter2)
+lrtest(mod.full_,mod.sex.inter2)
+
+mod.both.inter2<-glm(HIV.cat~province.cat*edu.years + age*edu.years,data=mydata,family=binomial())
+anova(mod.age.inter2, mod.both.inter2, test = "LRT")
+summary(mod.both.inter2)
+lrtest(mod.full_,mod.both.inter2)
+
+
+
+
+mod.age.inter3 <- glm(HIV.cat ~province.cat+age*wealth.cat,data=mydata,family=binomial())
+anova(mod.full_, mod.age.inter3, test = "LRT")
+summary(mod.age.inter3)
+lrtest(mod.full_,mod.age.inter3)
+
+mod.w.inter3 <- glm(HIV.cat ~province.cat*wealth.cat+age, data=mydata,family=binomial())
+anova(mod.full_, mod.w.inter3, test = "LRT")
+summary(mod.w.inter3)
+lrtest(mod.full_,mod.w.inter3)
+
+mod.both.inter3<-glm(HIV.cat~province.cat*wealth.cat +age*wealth.cat,data=mydata,family=binomial())
+anova(mod.age.inter3, mod.both.inter3, test = "LRT")
+summary(mod.both.inter3)
+lrtest(mod.full_,mod.both.inter3)
+
+
+#Model summary
+library(kableExtra)
+```
+
+
+```{r}
+#Model Checking
+
+mod.full_ <- glm(HIV.cat ~ province.cat+age+employ.cat+edu.years+wealth.cat, family = binomial(), data = mydata)
+summary(mod.full_)
+exp(mod.full_$coefficients[2])
+
+#change HIV from factor to int
+mydata$HIV.cat<- factor(mydata$HIV.status)
+levels(mydata$HIV.cat)<-c(0,1)
+mydata$HIV.cat<-as.integer(as.integer(mydata$HIV.cat)-1)
+
+library(ResourceSelection)
+hoslem.test(mydata$HIV.cat, fitted(mod.full_), g = 10)
+
+#change HIV back to factor
+mydata$HIV.cat<- factor(mydata$HIV.status)
+
+#residuals
+?residuals
+?residuals.glm
+dev.resid <- residuals(mod.full_, type="deviance")
+dev.std <- dev.resid / sqrt(1-hatvalues(mod.full_))
+pears.resid <- residuals(mod.full_, type="pearson")
+pears.std <- pears.resid / sqrt(1-hatvalues(mod.full_))
+
+plot(mod.full_)
+
+par(mfrow=c(2,2))
+plot(mod.full_)
+dev.off()
+
+#predictions
+?predict.glm
+fitted <- predict(mod.full_, type="response")
+linpred <- predict(mod.full_, type="link")
+
+plot(pears.std ~ linpred, xlab = "Linear predictor", ylab = "Pearson residuals", 
+     col = "lightblue", pch = 19)
+text(pears.std ~ linpred, labels = mydata$HIV.cat, cex = 0.6, font = 2)
+
+#outliers
+plot(dev.std)
+which(dev.std==max(dev.std))
+cbind(mydata[219,], fitted.probs[219])
+cbind(mydata[c(219,241),],fitted[c(219,241)])
+summary(mydata)
+
+#leverage, and influence
+levs <- hatvalues(mod.full_) 
+plot(levs)
+which(levs==max(levs))
+mydata[117,]
+
+#Cooks distance and dfbetas
+plot(mod.full_2, which = 5)
+CooksD <- cooks.distance(mod.full_)
+plot(mod.full_, which = 4, id.n = 3)
+
+dfbetas <- dfbeta(mod.full_)
+dfbetas
+which(dfbetas[,2]==max(dfbetas[,2]))
+cbind(mydata[c(337,370),], fitted[c(337,370)])
+```
+
+```{r}
+#Model Interpretation
+
+summary(mod.full_)
+```
+
+
+```{r}
+#Classification
+
+#use model to predict the prob of nodal involvement
+predictions <- predict(mod.full_, type = "response")
+
+#get classification matrix using a threshold of 0.5
+threshold = 0.5
+predicted_cat <- ifelse(predictions>threshold,1,0)
+actual_cat<- mod.full_$y
+conf_matrix<-table(predicted_cat,actual_cat)
+conf_matrix
+
+predicted_cat <- factor(predicted_cat, levels = c(0,1), labels = c("HIV negative", "HIV positive"))
+actual_cat <- factor(actual_cat, levels = c(0,1), labels = c("HIV negative", "HIV positive"))
+nodal.fac <- factor(mydata$HIV.status, levels = c(0,1), labels = c("HIV negative", "HIV positive"))
+conf_matrix<-table(predicted_cat,actual_cat)
+conf_matrix
+
+3/(3+87)*100#sens
+365/(365+87)*100#spec
+
+#uses the ROCR pckg
+library(ROCR)
+prediction.object <- prediction(fitted(mod.full_), labels = mydata$HIV.status)
+
+roc = performance(prediction.object,"tpr","fpr") #tpr / fpr : true / false positive rate
+plot(roc, colorize = T, lwd = 2)
+abline(a = 0, b = 1) 
+
+cutoffs <- data.frame(cut=roc@alpha.values[[1]], tpr=roc@y.values[[1]], spec = 1 - roc@x.values[[1]],
+                      fpr=roc@x.values[[1]])
+cutoffs
+
+#AUC
+performance(prediction.object,"auc")@y.values
+
+#apply scheme to out of sample data
+set.seed(7860)
+val = Assgn2Data[-match(rownames(mydata),rownames(Assgn2Data)),]
+#val = mydata[sample(1:1000,500:1000),] #pretend val contains new unseen predictions
+val<-na.omit(val)
+val 
+
+threshold = 0.09
+predicted_cat <- ifelse(predict(mod.full_, newdata = val[1:455], type="response")>threshold,1,0)
+actual_cat <- as.numeric(val$HIV.status)
+conf_matrix<-table(predicted_cat,actual_cat)
+conf_matrix
+
+30/(30+1)*100 #sens
+44/(44+1)*100 #spec
+
+
+```
+
+
+
+```{r}
+#Effect modification
+#wealth.quintile, province and their interaction.
+
+mydata2 <- Assgn2Data[sample(1:1000),]
+attach(mydata2)
+
+mydata2$HIV.cat<- factor(mydata2$HIV.status)
+mydata2$province.cat<- factor(mydata2$province)
+mydata2$wealth.cat<- factor(mydata2$wealth.quintile)
+
+modwp <- glm(HIV.cat ~ wealth.cat+province.cat, family = binomial(), data = mydata2)
+modwp2 <- glm(HIV.cat ~ wealth.cat*province.cat, family = binomial(), data = mydata2)
+summary(modwp2)
+anova(modwp, modwp2, test = "LRT")
+
+#95% confidence intervals
+S<-round(vcov(modwp2),4)
+
+#WCP 
+#Q2v1
+Var21 <- S[2:2] + S[7:7] + 2*S[2:7]
+
+exp(0.05144-0.02946 - 1.96*sqrt(abs(Var21[1]))) 
+exp(0.05144-0.02946 + 1.96*sqrt(abs(Var21[1])))
+
+#Q3v1
+Var31 <- S[3:3] + S[8:8] + 2*S[3:8]
+exp(0.23802-0.95974 - 1.96*sqrt(abs(Var31[1]))) 
+exp(0.23802-0.95974 + 1.96*sqrt(abs(Var31[1])))
+
+#Q4v1
+Var41 <- S[4:4] + S[9:9] + 2*S[4:9]
+
+exp(-0.17903-1.18529 - 1.96*sqrt(abs(Var41[1]))) 
+exp(-0.17903-1.18529 + 1.96*sqrt(abs(Var41[1])))
+
+#Q5v1
+Var51 <- S[5:5] + S[10:10] + 2*S[5:10]
+
+exp(0.19249-2.09395 - 1.96*sqrt(abs(Var51[1]))) 
+exp(0.19249-2.09395 + 1.96*sqrt(abs(Var51[1])))
+
+
+
+#FSP 
+#Q2v1
+exp(0.05144- 1.96*0.30562) 
+exp(0.05144+ 1.96*0.30562) 
+
+#Q3v1
+exp(0.23802 - 1.96*0.30917) 
+exp(0.23802 + 1.96*0.30917)  
+
+#Q4v1
+exp(-0.17903- 1.96*0.32843) 
+exp(-0.17903+ 1.96*0.32843)
+
+#Q5v1
+exp(0.19249 - 1.96*0.31065) 
+exp(0.19249 + 1.96*0.31065)  
+```
+

@@ -1,0 +1,116 @@
+---
+title: "Biostats"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r results='hide'}
+#Number of confirmed cases within four countries over time
+
+owid_covid_data  %>% 
+  dplyr::select(location, date, total_cases) %>%  filter(location == c("United States","Turkey","Cuba","Fiji"))%>% 
+ggplot( aes(x = date, y = total_cases, color=location)) + geom_line() + scale_y_log10()+ ggtitle("Number of confirmed cases within \n United States, Turkey, Cuba and Fiji over time")+ theme(plot.title = element_text(hjust = 0.5))+ xlab("Date") +ylab("Number of confirmed cases") 
+```
+
+
+
+```{r results='hide'}
+#Number of confirmed deaths within four countries over time
+
+owid_covid_data  %>% 
+  dplyr::select(location, date, total_deaths) %>%  filter(location == c("United States","Turkey","Cuba","Fiji"))%>% 
+ggplot( aes(x = date, y = total_deaths, color=location)) + geom_line() + scale_y_log10()+ ggtitle("Number of confirmed deaths within \n United States, Turkey, Cuba and Fiji over time")+ theme(plot.title = element_text(hjust = 0.5))+ xlab("Date") +ylab("Number of confirmed deaths") 
+```
+
+
+```{r results='hide'}
+#Number of tests per day
+
+owid_covid_data  %>% 
+  dplyr::select(location, date, new_tests) %>%  filter(location == c("United States","Turkey","Cuba","Fiji"))%>%
+ggplot( aes(x = date, y = new_tests, , color=location)) + geom_line() + scale_y_log10()+ ggtitle("Number of tests per day within \n United States, Turkey, Cuba and Fiji over time")+ theme(plot.title = element_text(hjust = 0.5))+ xlab("Date") +ylab("Number of tests per day") 
+```
+
+```{r results='hide'}
+#Share of the population > 70 years
+
+owid_covid_data  %>% 
+  dplyr::select(location, aged_70_older) %>%  filter(location == c("United States","Turkey","Cuba","Fiji"))%>%
+ggplot( aes( x = location, y=aged_70_older/100, fill=(location)))+ geom_bar(stat = "identity", width=0.2)  +
+   ggtitle("Share of the population > 70 years of age within \n United States, Turkey, Cuba and Fiji")+ theme(plot.title = element_text(hjust = 0.5),legend.position = "none")+ xlab("Location") +ylab("> 70 years of age") 
+```
+
+
+
+```{r results='hide'}
+#Number of hospital beds per 1000 people
+
+owid_covid_data  %>% 
+  dplyr::select(location, hospital_beds_per_thousand) %>%  filter(location == c("United States","Turkey","Cuba","Fiji"))%>%
+ggplot( aes( x = location, y=hospital_beds_per_thousand/100, fill=(location)))+ geom_bar(stat = "identity", width=0.2)  +
+   ggtitle("Number of hospital beds per 1000 people within \n United States, Turkey, Cuba and Fiji")+ theme(plot.title = element_text(hjust = 0.5),legend.position = "none")+ xlab("Location") +ylab("Number of hospital beds per 1000 people") 
+```
+
+```{r results='hide'}
+#Choose a specific date and for that date, compare the countries with respect to the prevalence of confirmed COVID-19 cases.
+
+owid_covid_data  %>% 
+  dplyr::select(location, date, total_cases, population) %>%  filter(location == "United States", date== "2020-03-20")
+
+owid_covid_data  %>% 
+  dplyr::select(location, date, total_cases, population) %>%  filter(location == "Turkey", date== "2020-03-20")
+
+owid_covid_data  %>% 
+  dplyr::select(location, date, total_cases, population) %>%  filter(location == "Cuba", date== "2020-03-20")
+
+owid_covid_data  %>% 
+  dplyr::select(location, date, total_cases, population) %>%  filter(location == "Fiji", date== "2020-03-20")
+
+
+
+(US <- 20030/331002647*100)
+(TU <- 359/84339067*100)
+(CU <- 16/11326616*100)
+(FI <- 1/896444*100)
+```
+
+```{r results='hide'}
+#Choose a time interval from date 1 to date 2 and calculate the incidence of new cases per month or day for each country.
+
+us<-owid_covid_data  %>% 
+  dplyr::select(location, date, new_cases_per_million) %>%  filter(location == "United States", date> "2020-03-19" & date <"2020-04-20")
+
+tu<-owid_covid_data  %>% 
+  dplyr::select(location, date, new_cases_per_million) %>%  filter(location == "Turkey", date> "2020-03-19" & date <"2020-04-20")
+
+cu<-owid_covid_data  %>% 
+  dplyr::select(location, date, new_cases_per_million) %>%  filter(location == "Cuba", date> "2020-03-19" & date <"2020-04-20")
+
+fi<-owid_covid_data  %>% 
+  dplyr::select(location, date, new_cases_per_million) %>%  filter(location == "Fiji", date> "2020-03-19" & date <"2020-04-20")
+
+sum(us$new_cases_per_million)
+sum(tu$new_cases_per_million)
+sum(cu$new_cases_per_million)
+sum(fi$new_cases_per_million)
+
+```
+
+
+```{r results='hide'}
+#Calculate the relative risk of COVID-19 infection in country A versus country B for your chosen interval for any two chosen countries.
+
+
+
+uss<-sum(us$new_cases_per_million)
+fis<-sum(fi$new_cases_per_million)
+
+uss/fis
+fis/uss
+```
